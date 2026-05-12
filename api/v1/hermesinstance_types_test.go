@@ -9,6 +9,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
+// Ptr is a local test helper (the resources package's Ptr is not visible here).
+func Ptr[T any](v T) *T { return &v }
+
 // TestHermesInstanceSpec_HasAllSubSpecs is the schema canary — every sub-spec
 // from design §4 must be addressable on HermesInstanceSpec. Tasks 3-9 fill the
 // bodies; this test only guards the shape so the field-tag / json-name choices
@@ -40,4 +43,21 @@ func TestConfigSpec_RawAndRef(t *testing.T) {
 	assert.NotNil(t, cs.Raw)
 	assert.NotNil(t, cs.ConfigMapRef)
 	assert.Equal(t, ConfigMergeModeMerge, cs.MergeMode)
+}
+
+func TestWorkspaceSpec_NestedPath(t *testing.T) {
+	t.Parallel()
+	ws := WorkspaceSpec{
+		InitialFiles: []WorkspaceFile{
+			{Path: "notes/finance/2026.md", Content: "hi"},
+			{Path: "shallow.txt", Content: "ok"},
+		},
+		InitialDirs:  []string{"data", "data/raw"},
+		ConfigMapRef: &corev1.LocalObjectReference{Name: "user-ws"},
+		Bootstrap:    WorkspaceBootstrap{Enabled: Ptr(false)},
+	}
+	assert.Len(t, ws.InitialFiles, 2)
+	assert.Equal(t, "notes/finance/2026.md", ws.InitialFiles[0].Path)
+	assert.NotNil(t, ws.Bootstrap.Enabled)
+	assert.False(t, *ws.Bootstrap.Enabled)
 }

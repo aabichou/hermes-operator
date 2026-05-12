@@ -196,8 +196,61 @@ type RawConfig struct {
 	runtime.RawExtension `json:",inline"`
 }
 
-// WorkspaceSpec — populated in Task 4.
-type WorkspaceSpec struct{}
+// WorkspaceSpec seeds initial files and directories into ~/.hermes on first
+// start. Path values support arbitrary nested directories ("a/b/c.md" is fine);
+// the workspace ConfigMap encodes nested paths using "__" as the separator so a
+// single-level ConfigMap data map can express them — Plan 3's runtime-init
+// container decodes the keys back to filesystem paths before invoking the agent.
+//
+// Lesson from openclaw #482: do not constrain Path to a single segment; that
+// caused users to flatten their notes into hash-separated filenames.
+type WorkspaceSpec struct {
+	// InitialFiles is the list of files to seed.
+	// SSA list-map key is "path" so HermesSelfConfig (Plan 4) can patch entries
+	// in place without replacing the whole slice.
+	// +listType=map
+	// +listMapKey=path
+	// +optional
+	InitialFiles []WorkspaceFile `json:"initialFiles,omitempty"`
+
+	// InitialDirs is the list of directories to mkdir -p on first start.
+	// +listType=set
+	// +optional
+	InitialDirs []string `json:"initialDirs,omitempty"`
+
+	// ConfigMapRef references a user-owned ConfigMap whose entries are merged
+	// onto InitialFiles (operator-managed entries win on conflict).
+	// +optional
+	ConfigMapRef *corev1.LocalObjectReference `json:"configMapRef,omitempty"`
+
+	// Bootstrap controls the optional one-shot bootstrap script that hermes-agent
+	// runs on first start (e.g. `hermes onboard`). Default disabled.
+	// +optional
+	Bootstrap WorkspaceBootstrap `json:"bootstrap,omitempty"`
+}
+
+// WorkspaceFile is a single seeded file. Nested paths are allowed; the workspace
+// ConfigMap encodes them with "__" separators (decoded by runtime-init).
+type WorkspaceFile struct {
+	// Path is the relative path under ~/.hermes (e.g. "notes/finance/2026.md").
+	// +kubebuilder:validation:MinLength=1
+	// +kubebuilder:validation:MaxLength=4096
+	// +kubebuilder:validation:Pattern=`^[^/].*[^/]$|^[^/]$`
+	Path string `json:"path"`
+
+	// Content is the UTF-8 body. Binary content must be base64-encoded by the
+	// caller and decoded by the bootstrap step (out of scope of v1 schema).
+	// +kubebuilder:validation:MaxLength=1048576
+	Content string `json:"content"`
+}
+
+// WorkspaceBootstrap toggles the first-start bootstrap script.
+type WorkspaceBootstrap struct {
+	// Enabled — default false. Plan 3 wires the actual init-container.
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
 
 // ResourcesSpec — populated in Task 5.
 type ResourcesSpec struct{}

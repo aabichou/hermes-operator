@@ -4965,6 +4965,72 @@ spec:
               workspace:
                 description: Workspace seeds initial files and directories into ~/.hermes
                   on first start.
+                properties:
+                  bootstrap:
+                    description: |-
+                      Bootstrap controls the optional one-shot bootstrap script that hermes-agent
+                      runs on first start (e.g. `hermes onboard`). Default disabled.
+                    properties:
+                      enabled:
+                        default: false
+                        description: Enabled — default false. Plan 3 wires the actual
+                          init-container.
+                        type: boolean
+                    type: object
+                  configMapRef:
+                    description: |-
+                      ConfigMapRef references a user-owned ConfigMap whose entries are merged
+                      onto InitialFiles (operator-managed entries win on conflict).
+                    properties:
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  initialDirs:
+                    description: InitialDirs is the list of directories to mkdir -p
+                      on first start.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: set
+                  initialFiles:
+                    description: |-
+                      InitialFiles is the list of files to seed.
+                      SSA list-map key is "path" so HermesSelfConfig (Plan 4) can patch entries
+                      in place without replacing the whole slice.
+                    items:
+                      description: |-
+                        WorkspaceFile is a single seeded file. Nested paths are allowed; the workspace
+                        ConfigMap encodes them with "__" separators (decoded by runtime-init).
+                      properties:
+                        content:
+                          description: |-
+                            Content is the UTF-8 body. Binary content must be base64-encoded by the
+                            caller and decoded by the bootstrap step (out of scope of v1 schema).
+                          maxLength: 1048576
+                          type: string
+                        path:
+                          description: Path is the relative path under ~/.hermes (e.g.
+                            "notes/finance/2026.md").
+                          maxLength: 4096
+                          minLength: 1
+                          pattern: ^[^/].*[^/]$|^[^/]$
+                          type: string
+                      required:
+                      - content
+                      - path
+                      type: object
+                    type: array
+                    x-kubernetes-list-map-keys:
+                    - path
+                    x-kubernetes-list-type: map
                 type: object
             type: object
           status:
