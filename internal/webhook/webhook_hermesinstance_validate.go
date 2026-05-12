@@ -169,12 +169,12 @@ func validateCommon(inst *hermesv1.HermesInstance) (admission.Warnings, error) {
 		if len(inst.Spec.SelfConfigure.AllowedActions) == 0 {
 			return warns, fmt.Errorf("spec.selfConfigure.enabled=true requires non-empty spec.selfConfigure.allowedActions")
 		}
-		allowed := map[string]struct{}{
-			"skills":         {},
-			"config":         {},
-			"envVars":        {},
-			"workspaceFiles": {},
-			"profiles":       {},
+		allowed := map[hermesv1.SelfConfigAction]struct{}{
+			hermesv1.ActionSkills:         {},
+			hermesv1.ActionConfig:         {},
+			hermesv1.ActionEnvVars:        {},
+			hermesv1.ActionWorkspaceFiles: {},
+			hermesv1.ActionProfiles:       {},
 		}
 		for _, a := range inst.Spec.SelfConfigure.AllowedActions {
 			if _, ok := allowed[a]; !ok {

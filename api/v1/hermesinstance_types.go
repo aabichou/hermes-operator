@@ -740,7 +740,7 @@ type SelfConfigureSpec struct {
 	// enforce: skills, config, envVars, workspaceFiles, profiles.
 	// +listType=set
 	// +optional
-	AllowedActions []string `json:"allowedActions,omitempty"`
+	AllowedActions []SelfConfigAction `json:"allowedActions,omitempty"`
 
 	// ProtectedKeys is the list of glob expressions over JSON paths that may
 	// not be mutated by HermesSelfConfig. Required (non-empty) when Enabled=true.

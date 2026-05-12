@@ -195,7 +195,7 @@ func TestSelfConfigureSpec_AllowList(t *testing.T) {
 	t.Parallel()
 	sc := SelfConfigureSpec{
 		Enabled:        Ptr(true),
-		AllowedActions: []string{"skills", "envVars"},
+		AllowedActions: []SelfConfigAction{ActionSkills, ActionEnvVars},
 		ProtectedKeys:  []string{"spec.image.repository"},
 	}
 	assert.True(t, *sc.Enabled)

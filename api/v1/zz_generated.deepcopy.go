@@ -1457,7 +1457,7 @@ func (in *SelfConfigureSpec) DeepCopyInto(out *SelfConfigureSpec) {
 	}
 	if in.AllowedActions != nil {
 		in, out := &in.AllowedActions, &out.AllowedActions
-		*out = make([]string, len(*in))
+		*out = make([]SelfConfigAction, len(*in))
 		copy(*out, *in)
 	}
 	if in.ProtectedKeys != nil {

@@ -55,7 +55,7 @@ func TestValidator_DenySelfConfigureEnabledNoProtectedKeys(t *testing.T) {
 		Spec: hermesv1.HermesInstanceSpec{
 			Image:         hermesv1.ImageSpec{Repository: "x"},
 			Storage:       hermesv1.StorageSpec{Persistence: hermesv1.PersistenceSpec{Size: "1Gi"}},
-			SelfConfigure: hermesv1.SelfConfigureSpec{Enabled: Ptr(true), AllowedActions: []string{"skills"}},
+			SelfConfigure: hermesv1.SelfConfigureSpec{Enabled: Ptr(true), AllowedActions: []hermesv1.SelfConfigAction{hermesv1.ActionSkills}},
 		},
 	}
 	_, err := v.ValidateCreate(context.Background(), inst)
@@ -203,7 +203,7 @@ func TestValidateSelfConfigure_ProfilesActionAllowed(t *testing.T) {
 			Storage: hermesv1.StorageSpec{Persistence: hermesv1.PersistenceSpec{Size: "1Gi"}},
 			SelfConfigure: hermesv1.SelfConfigureSpec{
 				Enabled:        Ptr(true),
-				AllowedActions: []string{"profiles"},
+				AllowedActions: []hermesv1.SelfConfigAction{hermesv1.ActionProfiles},
 				ProtectedKeys:  []string{"provider.apiKey"},
 			},
 		},
@@ -222,7 +222,7 @@ func TestValidateSelfConfigure_UnknownActionDenied(t *testing.T) {
 			Storage: hermesv1.StorageSpec{Persistence: hermesv1.PersistenceSpec{Size: "1Gi"}},
 			SelfConfigure: hermesv1.SelfConfigureSpec{
 				Enabled:        Ptr(true),
-				AllowedActions: []string{"reboot-cluster"},
+				AllowedActions: []hermesv1.SelfConfigAction{"reboot-cluster"},
 				ProtectedKeys:  []string{"provider.apiKey"},
 			},
 		},

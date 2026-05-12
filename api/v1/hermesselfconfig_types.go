@@ -21,6 +21,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+// SelfConfigAction names a category of mutation. Used by
+// HermesInstance.spec.selfConfigure.allowedActions to gate what the agent
+// may request via HermesSelfConfig.
+// +kubebuilder:validation:Enum=skills;config;envVars;workspaceFiles;profiles
+type SelfConfigAction string
+
+const (
+	ActionSkills         SelfConfigAction = "skills"
+	ActionConfig         SelfConfigAction = "config"
+	ActionEnvVars        SelfConfigAction = "envVars"
+	ActionWorkspaceFiles SelfConfigAction = "workspaceFiles"
+	ActionProfiles       SelfConfigAction = "profiles"
+)
+
 // HermesSelfConfigSpec is an agent-driven, audited request to mutate the
 // parent HermesInstance. The operator validates against the parent's
 // .spec.selfConfigure policy, then applies via Server-Side Apply with
