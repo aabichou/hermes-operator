@@ -15,10 +15,11 @@ import (
 	"strings"
 	"time"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // BuildSnapshotJob constructs a one-shot Job that writes a profile snapshot

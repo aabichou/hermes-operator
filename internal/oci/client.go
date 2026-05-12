@@ -24,7 +24,6 @@ type Registry interface {
 
 type cachedTags struct {
 	tags    []string
-	etag    string // reserved for ETag-based conditional fetches in real-network mode
 	fetched time.Time
 }
 

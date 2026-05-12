@@ -15,9 +15,10 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func parentInstance() *hermesv1.HermesInstance {
@@ -72,7 +73,7 @@ func TestBuildEnvVarsPatch_LiteralAndValueFrom(t *testing.T) {
 	vf := patch.Spec.Env[1].ValueFrom
 	assert.NotNil(t, vf)
 	assert.NotNil(t, vf.SecretKeyRef)
-	assert.Equal(t, "finance-creds", vf.SecretKeyRef.LocalObjectReference.Name)
+	assert.Equal(t, "finance-creds", vf.SecretKeyRef.Name)
 	assert.Equal(t, "apiKey", vf.SecretKeyRef.Key)
 	assert.Empty(t, patch.Spec.Skills, "must not touch skills when only env requested")
 }

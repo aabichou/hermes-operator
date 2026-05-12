@@ -12,8 +12,10 @@ import (
 	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
-func FinalBackupJobName(inst *hermesv1.HermesInstance) string     { return inst.Name + "-backup-final" }
-func PreUpdateBackupJobName(inst *hermesv1.HermesInstance) string { return inst.Name + "-backup-preupdate" }
+func FinalBackupJobName(inst *hermesv1.HermesInstance) string { return inst.Name + "-backup-final" }
+func PreUpdateBackupJobName(inst *hermesv1.HermesInstance) string {
+	return inst.Name + "-backup-preupdate"
+}
 func RestoreJobName(inst *hermesv1.HermesInstance) string         { return inst.Name + "-restore" }
 func MigrationJobName(inst *hermesv1.HermesInstance) string       { return inst.Name + "-migrate" }
 func BackupCronJobName(inst *hermesv1.HermesInstance) string      { return inst.Name + "-backup-cron" }

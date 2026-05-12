@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
 	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 

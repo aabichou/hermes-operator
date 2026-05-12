@@ -6,11 +6,12 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func newSelfConfigValidator(t *testing.T, objs ...client.Object) *HermesSelfConfigValidator {
