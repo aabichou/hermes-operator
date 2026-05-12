@@ -3625,6 +3625,118 @@ spec:
               observability:
                 description: Observability turns on metrics, ServiceMonitor, PrometheusRule,
                   and logging.
+                properties:
+                  logging:
+                    description: LoggingSpec controls the agent's logger configuration
+                      via env vars.
+                    properties:
+                      format:
+                        default: text
+                        description: LogFormat is the agent's log output format.
+                        enum:
+                        - text
+                        - json
+                        type: string
+                      level:
+                        default: info
+                        description: Level — Plan 3 wires HERMES_LOG_LEVEL on the
+                          agent container.
+                        enum:
+                        - trace
+                        - debug
+                        - info
+                        - warn
+                        - error
+                        type: string
+                    type: object
+                  metrics:
+                    description: MetricsSpec controls the agent's Prometheus metrics
+                      endpoint.
+                    properties:
+                      enabled:
+                        default: true
+                        type: boolean
+                      port:
+                        default: 9090
+                        description: Port for the /metrics endpoint.
+                        format: int32
+                        maximum: 65535
+                        minimum: 1
+                        type: integer
+                      secure:
+                        default: false
+                        description: |-
+                          Secure — when true, /metrics requires bearer-token auth and uses HTTPS.
+                          The ServiceMonitor scheme/scrape settings must agree (lesson #435/#440).
+                        type: boolean
+                    type: object
+                  prometheusRule:
+                    description: |-
+                      PrometheusRuleSpec controls emission of a default PrometheusRule with
+                      hermes-agent alerts (HighRestartRate, MetricsDown, etc.).
+                    properties:
+                      additionalRules:
+                        description: |-
+                          AdditionalRules is a list of user-supplied rules merged onto the operator
+                          default ruleset.
+                        items:
+                          description: |-
+                            PrometheusRule is a minimal copy of monitoringv1.Rule so we don't depend on
+                            the Prometheus-Operator Go types at compile time. The runtime emits
+                            unstructured objects.
+                          properties:
+                            alert:
+                              minLength: 1
+                              type: string
+                            annotations:
+                              additionalProperties:
+                                type: string
+                              type: object
+                            expr:
+                              minLength: 1
+                              type: string
+                            for:
+                              type: string
+                            labels:
+                              additionalProperties:
+                                type: string
+                              type: object
+                          required:
+                          - alert
+                          - expr
+                          type: object
+                        type: array
+                      enabled:
+                        default: false
+                        type: boolean
+                    type: object
+                  serviceMonitor:
+                    description: |-
+                      ServiceMonitorSpec controls Prometheus-Operator ServiceMonitor emission.
+                      When Enabled is true, the operator emits an unstructured ServiceMonitor; it
+                      does not require the Prometheus-Operator CRDs to be installed at compile time.
+                    properties:
+                      enabled:
+                        default: false
+                        type: boolean
+                      interval:
+                        default: 30s
+                        description: Interval — default "30s".
+                        pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                        type: string
+                      labels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          Labels are extra labels applied onto the ServiceMonitor for Prometheus
+                          label-selector matching (e.g. `release: kube-prometheus-stack`).
+                        type: object
+                      scrapeTimeout:
+                        default: 10s
+                        description: ScrapeTimeout — default "10s".
+                        pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                        type: string
+                    type: object
                 type: object
               probes:
                 description: Probes lets users override the built-in liveness/readiness/startup

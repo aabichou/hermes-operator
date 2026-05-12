@@ -504,8 +504,114 @@ type IngressTLSSpec struct {
 	Hosts []string `json:"hosts,omitempty"`
 }
 
-// ObservabilitySpec — populated in Task 8.
-type ObservabilitySpec struct{}
+// ObservabilitySpec controls metrics, scraping, alerting, logging.
+type ObservabilitySpec struct {
+	// +optional
+	Metrics MetricsSpec `json:"metrics,omitempty"`
+	// +optional
+	ServiceMonitor ServiceMonitorSpec `json:"serviceMonitor,omitempty"`
+	// +optional
+	PrometheusRule PrometheusRuleSpec `json:"prometheusRule,omitempty"`
+	// +optional
+	Logging LoggingSpec `json:"logging,omitempty"`
+}
+
+// MetricsSpec controls the agent's Prometheus metrics endpoint.
+type MetricsSpec struct {
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Port for the /metrics endpoint.
+	// +kubebuilder:default=9090
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	// +optional
+	Port int32 `json:"port,omitempty"`
+
+	// Secure — when true, /metrics requires bearer-token auth and uses HTTPS.
+	// The ServiceMonitor scheme/scrape settings must agree (lesson #435/#440).
+	// +kubebuilder:default=false
+	// +optional
+	Secure *bool `json:"secure,omitempty"`
+}
+
+// ServiceMonitorSpec controls Prometheus-Operator ServiceMonitor emission.
+// When Enabled is true, the operator emits an unstructured ServiceMonitor; it
+// does not require the Prometheus-Operator CRDs to be installed at compile time.
+type ServiceMonitorSpec struct {
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// Labels are extra labels applied onto the ServiceMonitor for Prometheus
+	// label-selector matching (e.g. `release: kube-prometheus-stack`).
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+
+	// Interval — default "30s".
+	// +kubebuilder:default="30s"
+	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$`
+	// +optional
+	Interval string `json:"interval,omitempty"`
+
+	// ScrapeTimeout — default "10s".
+	// +kubebuilder:default="10s"
+	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$`
+	// +optional
+	ScrapeTimeout string `json:"scrapeTimeout,omitempty"`
+}
+
+// PrometheusRuleSpec controls emission of a default PrometheusRule with
+// hermes-agent alerts (HighRestartRate, MetricsDown, etc.).
+type PrometheusRuleSpec struct {
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// AdditionalRules is a list of user-supplied rules merged onto the operator
+	// default ruleset.
+	// +optional
+	AdditionalRules []PrometheusRule `json:"additionalRules,omitempty"`
+}
+
+// PrometheusRule is a minimal copy of monitoringv1.Rule so we don't depend on
+// the Prometheus-Operator Go types at compile time. The runtime emits
+// unstructured objects.
+type PrometheusRule struct {
+	// +kubebuilder:validation:MinLength=1
+	Alert string `json:"alert"`
+	// +kubebuilder:validation:MinLength=1
+	Expr string `json:"expr"`
+	// +optional
+	For string `json:"for,omitempty"`
+	// +optional
+	Labels map[string]string `json:"labels,omitempty"`
+	// +optional
+	Annotations map[string]string `json:"annotations,omitempty"`
+}
+
+// LogFormat is the agent's log output format.
+// +kubebuilder:validation:Enum=text;json
+type LogFormat string
+
+const (
+	LogFormatText LogFormat = "text"
+	LogFormatJSON LogFormat = "json"
+)
+
+// LoggingSpec controls the agent's logger configuration via env vars.
+type LoggingSpec struct {
+	// +kubebuilder:default=text
+	// +optional
+	Format LogFormat `json:"format,omitempty"`
+
+	// Level — Plan 3 wires HERMES_LOG_LEVEL on the agent container.
+	// +kubebuilder:default=info
+	// +kubebuilder:validation:Enum=trace;debug;info;warn;error
+	// +optional
+	Level string `json:"level,omitempty"`
+}
 
 // AvailabilitySpec — populated in Task 9.
 type AvailabilitySpec struct{}

@@ -129,3 +129,23 @@ func TestNetworkingSpec_ServiceAndIngress(t *testing.T) {
 	assert.True(t, *ns.Ingress.Enabled)
 	assert.Equal(t, "hermes.example.com", ns.Ingress.Host)
 }
+
+func TestObservabilitySpec_Shape(t *testing.T) {
+	t.Parallel()
+	o := ObservabilitySpec{
+		Metrics: MetricsSpec{
+			Enabled: Ptr(true), Port: 9090, Secure: Ptr(false),
+		},
+		ServiceMonitor: ServiceMonitorSpec{
+			Enabled:       Ptr(true),
+			Labels:        map[string]string{"team": "platform"},
+			Interval:      "30s",
+			ScrapeTimeout: "10s",
+		},
+		PrometheusRule: PrometheusRuleSpec{Enabled: Ptr(true)},
+		Logging:        LoggingSpec{Format: LogFormatJSON, Level: "info"},
+	}
+	assert.True(t, *o.Metrics.Enabled)
+	assert.Equal(t, int32(9090), o.Metrics.Port)
+	assert.Equal(t, LogFormatJSON, o.Logging.Format)
+}
