@@ -112,3 +112,18 @@ Plan 1 listed StatefulSet / Service / Probe defaults. Plan 2 adds these:
 | NetworkPolicy | `spec.policyTypes` | both `Ingress` and `Egress` explicitly (k8s defaults to only `Ingress` when omitted) |
 | PodDisruptionBudget | one of `MinAvailable` / `MaxUnavailable` | when neither set, `MaxUnavailable: 1` |
 | Role | `apiGroups` | empty string `""` for core resources, explicit other groups |
+
+## Well-known egress endpoints
+
+The operator's default-deny `NetworkPolicy` allows only DNS to kube-dns out of the box. Each `spec.gateways.<platform>.enabled: true` adds an egress allow for the upstream's well-known endpoints. CNI plugins that support FQDN peers (Cilium, Calico with `dns` selector) should match the hostnames below; plugins without FQDN support fall back to a port-only rule (443/TCP to any destination), which is wider than ideal — document the trade-off when shipping the cluster.
+
+| Gateway | Hostnames | Port | Protocol | Notes |
+|---|---|---|---|---|
+| Telegram | `api.telegram.org` | 443 | TCP | Long-poll OR webhook. Webhook also needs ingress from Telegram's IP ranges to the agent's webhook URL — out of scope for the egress NetworkPolicy. |
+| Discord | `discord.com`, `gateway.discord.gg` | 443 | TCP | gateway.discord.gg is the WebSocket endpoint. |
+| Slack | `slack.com`, `wss-primary.slack.com` | 443 | TCP | wss-primary.slack.com is the Socket Mode endpoint. |
+| WhatsApp (Meta Cloud) | `graph.facebook.com` | 443 | TCP | Provider-specific. Twilio users should replace with `api.twilio.com`. |
+| Signal (chat.signal.org) | `chat.signal.org` | 443 | TCP | Self-hosted signal-cli-rest-api deployments should supplement via `spec.networking.egress`. |
+| Honcho (sibling) | sibling pod selector | 8000 | TCP | In-namespace pod-selector peer, not internet. |
+
+The operator does NOT cover ingress from those providers (Telegram, Slack webhook callbacks, etc.) — surface that via `spec.networking.ingress` or a dedicated Ingress object in your cluster.
