@@ -429,7 +429,7 @@ func (r *HermesInstanceReconciler) reconcileHoncho(ctx context.Context, inst *he
 			if err := controllerutil.SetControllerReference(inst, desired, r.Scheme); err != nil {
 				return fmt.Errorf("honcho pvc owner ref: %w", err)
 			}
-			if err := r.Create(ctx, desired); err != nil {
+			if err := r.Create(ctx, desired); err != nil { // reconcile-guard:allow — PVC is create-only (leave on disable for data safety)
 				return fmt.Errorf("honcho pvc create: %w", err)
 			}
 		} else if err != nil {
