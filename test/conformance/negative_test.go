@@ -2,7 +2,6 @@ package conformance
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -13,10 +12,8 @@ import (
 type negativeCase struct {
 	// name is a short human-readable label for the test row.
 	name string
-	// yaml is the HermesInstance manifest to apply. If empty, fixture is loaded from testdata.
+	// yaml is the HermesInstance manifest to apply.
 	yaml string
-	// fixture is a path under test/conformance/testdata/ to load instead of inline yaml.
-	fixture string
 	// wantErrSubstring is a substring expected in the kubectl apply error output.
 	wantErrSubstring string
 	// isUpdate — when true, apply the base yaml first, then apply yaml as an update.
@@ -25,12 +22,6 @@ type negativeCase struct {
 	baseYAML string
 	// skip marks cases not yet supported by the live webhook infrastructure.
 	skip string
-}
-
-// testdataPath returns the absolute path of a testdata fixture.
-func testdataPath(name string) string {
-	// This file is test/conformance/negative_test.go; testdata is a sibling dir.
-	return filepath.Join("testdata", name)
 }
 
 // hermesInstanceYAML is a helper that builds a minimal valid HermesInstance
@@ -306,7 +297,7 @@ spec:
 
 	// ── immutable: storageClassName changed ──────────────────────────────────
 	{
-		name: "deny: storage.persistence.storageClassName changed (immutable)",
+		name:     "deny: storage.persistence.storageClassName changed (immutable)",
 		isUpdate: true,
 		baseYAML: `apiVersion: hermes.agent/v1
 kind: HermesInstance
@@ -495,7 +486,7 @@ spec:
 	// ── HermesSelfConfig: addProfileSnapshot without honcho enabled ───────────
 	// This case requires a parent HermesInstance without profileStore.honcho enabled.
 	{
-		name: "deny: HermesSelfConfig addProfileSnapshot without honcho enabled on parent",
+		name:     "deny: HermesSelfConfig addProfileSnapshot without honcho enabled on parent",
 		isUpdate: false,
 		baseYAML: hermesInstanceYAML("neg-parent-no-honcho", ""),
 		yaml: fmt.Sprintf(`apiVersion: hermes.agent/v1
