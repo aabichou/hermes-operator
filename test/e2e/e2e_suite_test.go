@@ -1,32 +1,58 @@
-/*
-Copyright 2026 stubbi.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
 package e2e
 
 import (
 	"fmt"
+	"io"
+	"os/exec"
+	"strings"
 	"testing"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-// Run e2e tests using the Ginkgo runner.
 func TestE2E(t *testing.T) {
 	RegisterFailHandler(Fail)
-	_, _ = fmt.Fprintf(GinkgoWriter, "Starting hermes-operator suite\n")
-	RunSpecs(t, "e2e suite")
+	RunSpecs(t, "hermes-operator e2e suite")
 }
+
+var execCommand = exec.Command
+
+var _ = BeforeSuite(func() {
+	SetDefaultEventuallyTimeout(3 * time.Minute)
+	SetDefaultEventuallyPollingInterval(2 * time.Second)
+	By("installing CRDs via helm chart")
+	out, err := run("helm", "upgrade", "--install", "hermes-operator", "../../charts/hermes-operator",
+		"--namespace", "hermes-system", "--create-namespace",
+		"--set", "image.repository=hermes-operator",
+		"--set", "image.tag=dev",
+		"--set", "image.pullPolicy=IfNotPresent",
+		"--wait", "--timeout=2m")
+	Expect(err).ToNot(HaveOccurred(), "helm upgrade failed: %s", out)
+})
+
+func run(cmd string, args ...string) (string, error) {
+	c := execCommand(cmd, args...)
+	b, err := c.CombinedOutput()
+	return string(b), err
+}
+
+func kubectl(args ...string) (string, error) {
+	return run("kubectl", args...)
+}
+
+func mustRun(cmd string, args ...string) string {
+	out, err := run(cmd, args...)
+	Expect(err).ToNot(HaveOccurred(), fmt.Sprintf("command failed: %s %v\n%s", cmd, args, out))
+	return out
+}
+
+func runStdin(cmd string, args []string, stdin string) (string, error) {
+	c := execCommand(cmd, args...)
+	c.Stdin = strings.NewReader(stdin)
+	b, err := c.CombinedOutput()
+	return string(b), err
+}
+
+func newStdin(s string) io.Reader { return strings.NewReader(s) }

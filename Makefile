@@ -204,3 +204,23 @@ mv $(1) $(1)-$(3) ;\
 } ;\
 ln -sf $(1)-$(3) $(1)
 endef
+
+##@ E2E
+
+KIND_CLUSTER ?= hermes-operator-e2e
+
+.PHONY: kind-up
+kind-up: ## Create a kind cluster for e2e.
+	kind create cluster --name $(KIND_CLUSTER) --config hack/kind-config.yaml
+
+.PHONY: kind-down
+kind-down: ## Tear down the kind cluster.
+	kind delete cluster --name $(KIND_CLUSTER)
+
+.PHONY: e2e
+e2e: ## Run e2e suite against the kind cluster (must already be up).
+	go test ./test/e2e/... -v -timeout 10m
+
+.PHONY: e2e-load-image
+e2e-load-image: docker-build ## Load the locally-built operator image into kind.
+	kind load docker-image $(IMG) --name $(KIND_CLUSTER)
