@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func TestBuildPDB_DefaultMaxUnavailable(t *testing.T) {
@@ -24,12 +25,12 @@ func TestBuildPDB_DefaultMaxUnavailable(t *testing.T) {
 
 func TestBuildPDB_HonorsMinAvailable(t *testing.T) {
 	t.Parallel()
-	min := intstr.FromString("50%")
+	pdbMin := intstr.FromString("50%")
 	inst := &hermesv1.HermesInstance{
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
 		Spec: hermesv1.HermesInstanceSpec{
 			Availability: hermesv1.AvailabilitySpec{
-				PodDisruptionBudget: hermesv1.PDBSpec{Enabled: Ptr(true), MinAvailable: &min},
+				PodDisruptionBudget: hermesv1.PDBSpec{Enabled: Ptr(true), MinAvailable: &pdbMin},
 			},
 		},
 	}

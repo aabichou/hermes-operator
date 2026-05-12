@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func TestValidator_DenyEmptyImageRepository(t *testing.T) {

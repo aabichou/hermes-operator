@@ -1,11 +1,12 @@
 package resources
 
 import (
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // NetworkPolicyName returns the deterministic NetworkPolicy name.

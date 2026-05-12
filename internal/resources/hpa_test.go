@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func TestBuildHPA_DefaultsScaleTargetStatefulSet(t *testing.T) {

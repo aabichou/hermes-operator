@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // HermesSelfConfigValidator is the Plan-2 stub validator. It always allows but
@@ -15,15 +16,15 @@ type HermesSelfConfigValidator struct{}
 
 var _ admission.CustomValidator = &HermesSelfConfigValidator{}
 
-func (v *HermesSelfConfigValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *HermesSelfConfigValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return validateSelfConfigStub(obj)
 }
 
-func (v *HermesSelfConfigValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *HermesSelfConfigValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	return validateSelfConfigStub(newObj)
 }
 
-func (v *HermesSelfConfigValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *HermesSelfConfigValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }
 

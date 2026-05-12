@@ -1,9 +1,10 @@
 package resources
 
 import (
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // PrometheusRuleGVK is the GroupVersionKind emitted.

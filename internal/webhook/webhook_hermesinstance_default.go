@@ -4,12 +4,13 @@ import (
 	"context"
 	"fmt"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // HermesInstanceDefaulter fills nil fields on a HermesInstance from the

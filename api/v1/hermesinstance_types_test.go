@@ -154,10 +154,10 @@ func TestObservabilitySpec_Shape(t *testing.T) {
 
 func TestAvailabilitySpec_Shape(t *testing.T) {
 	t.Parallel()
-	min := intstr.FromString("50%")
-	max := intstr.FromInt(1)
+	pdbMin := intstr.FromString("50%")
+	pdbMax := intstr.FromInt(1)
 	a := AvailabilitySpec{
-		PodDisruptionBudget: PDBSpec{Enabled: Ptr(true), MinAvailable: &min, MaxUnavailable: &max},
+		PodDisruptionBudget: PDBSpec{Enabled: Ptr(true), MinAvailable: &pdbMin, MaxUnavailable: &pdbMax},
 		HorizontalPodAutoscaler: HPASpec{Enabled: Ptr(true), MinReplicas: Ptr(int32(2)), MaxReplicas: Ptr(int32(5)),
 			TargetCPUUtilization: Ptr(int32(70))},
 		TopologySpreadConstraints: []corev1.TopologySpreadConstraint{

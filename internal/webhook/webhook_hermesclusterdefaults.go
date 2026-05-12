@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // HermesClusterDefaultsValidator enforces design §6: name must be "cluster".
@@ -14,15 +15,15 @@ type HermesClusterDefaultsValidator struct{}
 
 var _ admission.CustomValidator = &HermesClusterDefaultsValidator{}
 
-func (v *HermesClusterDefaultsValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *HermesClusterDefaultsValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	return validateHCD(obj)
 }
 
-func (v *HermesClusterDefaultsValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *HermesClusterDefaultsValidator) ValidateUpdate(_ context.Context, _, newObj runtime.Object) (admission.Warnings, error) {
 	return validateHCD(newObj)
 }
 
-func (v *HermesClusterDefaultsValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *HermesClusterDefaultsValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }
 

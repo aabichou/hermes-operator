@@ -22,9 +22,10 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 var _ = Describe("HermesClusterDefaults controller", func() {

@@ -58,7 +58,7 @@ func init() {
 
 // prometheusOperatorCRDsPresent returns true when monitoring.coreos.com API
 // group is registered. Probed once at startup; the reconciler caches the result.
-func prometheusOperatorCRDsPresent(ctx context.Context, cfg *rest.Config) bool {
+func prometheusOperatorCRDsPresent(_ context.Context, cfg *rest.Config) bool {
 	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
 	if err != nil {
 		return false

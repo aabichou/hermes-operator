@@ -4,9 +4,10 @@ import (
 	"sort"
 	"strings"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // InitialDirsKey is the well-known data key holding the newline-separated list

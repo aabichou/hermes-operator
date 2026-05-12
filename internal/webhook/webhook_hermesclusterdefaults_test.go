@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func TestHCDValidator_AllowSingleton(t *testing.T) {

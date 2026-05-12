@@ -4,11 +4,12 @@ import (
 	"context"
 	"fmt"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // HermesInstanceValidator enforces design §7.3 rules.
@@ -23,7 +24,7 @@ func Ptr[T any](v T) *T { return &v }
 func intOrStr(s string) intstr.IntOrString { return intstr.FromString(s) }
 
 // ValidateCreate runs the full sanity ruleset on a fresh resource.
-func (v *HermesInstanceValidator) ValidateCreate(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *HermesInstanceValidator) ValidateCreate(_ context.Context, obj runtime.Object) (admission.Warnings, error) {
 	inst, ok := obj.(*hermesv1.HermesInstance)
 	if !ok {
 		return nil, fmt.Errorf("expected *HermesInstance, got %T", obj)
@@ -32,7 +33,7 @@ func (v *HermesInstanceValidator) ValidateCreate(ctx context.Context, obj runtim
 }
 
 // ValidateUpdate runs the create rules + immutability rules.
-func (v *HermesInstanceValidator) ValidateUpdate(ctx context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
+func (v *HermesInstanceValidator) ValidateUpdate(_ context.Context, oldObj, newObj runtime.Object) (admission.Warnings, error) {
 	oldI, ok1 := oldObj.(*hermesv1.HermesInstance)
 	newI, ok2 := newObj.(*hermesv1.HermesInstance)
 	if !ok1 || !ok2 {
@@ -45,7 +46,7 @@ func (v *HermesInstanceValidator) ValidateUpdate(ctx context.Context, oldObj, ne
 }
 
 // ValidateDelete is a no-op.
-func (v *HermesInstanceValidator) ValidateDelete(ctx context.Context, obj runtime.Object) (admission.Warnings, error) {
+func (v *HermesInstanceValidator) ValidateDelete(_ context.Context, _ runtime.Object) (admission.Warnings, error) {
 	return nil, nil
 }
 

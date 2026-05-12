@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -29,6 +28,8 @@ import (
 	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // HermesClusterDefaultsReconciler enforces the singleton invariant on the
