@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func instWithHoncho(h hermesv1.HonchoSpec) *hermesv1.HermesInstance {

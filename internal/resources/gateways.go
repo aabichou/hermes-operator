@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // BuildGatewayEnvFrom returns whole-Secret envFrom entries. Reserved for

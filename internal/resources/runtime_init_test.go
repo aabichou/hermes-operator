@@ -4,9 +4,10 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 func instWithRuntime(r hermesv1.RuntimeSpec) *hermesv1.HermesInstance {
@@ -108,7 +109,7 @@ func TestBuildRuntimeVolumes_UVCacheEmptyDirDefault(t *testing.T) {
 	for _, v := range vols {
 		if v.Name == "uv-cache" {
 			found = true
-			assert.NotNil(t, v.VolumeSource.EmptyDir, "default to emptyDir")
+			assert.NotNil(t, v.EmptyDir, "default to emptyDir")
 		}
 	}
 	assert.True(t, found, "uv-cache volume present when uv enabled")

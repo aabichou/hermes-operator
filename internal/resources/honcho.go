@@ -3,12 +3,13 @@ package resources
 import (
 	"fmt"
 
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
+
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 )
 
 // HonchoDeploymentName, HonchoServiceName, HonchoPVCName return deterministic
