@@ -34,7 +34,20 @@ func BuildStatefulSet(inst *hermesv1.HermesInstance) *appsv1.StatefulSet {
 			ServiceName:          ServiceName(inst),
 			Replicas:             Ptr(int32(1)),
 			RevisionHistoryLimit: Ptr(int32(10)),
-			Selector:             &metav1.LabelSelector{MatchLabels: selector},
+			PodManagementPolicy:  appsv1.OrderedReadyPodManagement,
+			UpdateStrategy: appsv1.StatefulSetUpdateStrategy{
+				Type: appsv1.RollingUpdateStatefulSetStrategyType,
+				RollingUpdate: &appsv1.RollingUpdateStatefulSetStrategy{
+					Partition: Ptr(int32(0)),
+				},
+			},
+			// Explicitly set the PVC retention policy to avoid unnecessary spec updates on
+			// reconcile when the API server has already defaulted this field.
+			PersistentVolumeClaimRetentionPolicy: &appsv1.StatefulSetPersistentVolumeClaimRetentionPolicy{
+				WhenDeleted: appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+				WhenScaled:  appsv1.RetainPersistentVolumeClaimRetentionPolicyType,
+			},
+			Selector: &metav1.LabelSelector{MatchLabels: selector},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: labels},
 				Spec: corev1.PodSpec{
