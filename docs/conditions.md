@@ -44,3 +44,57 @@ This document is the authoritative reference for all `status.conditions` emitted
 | `Pending` | The controller has accepted the SelfConfig but not yet attempted apply. | `Accepted` |
 
 Phase derives from conditions: `Applied → Applied`, `Denied → Denied`, otherwise `Pending`.
+
+## BackupReady
+
+Reflects the state of scheduled backups.
+
+| Status | Reason | When |
+|---|---|---|
+| True | `Scheduled` | A backup CronJob is configured and the most recent run succeeded. |
+| False | `S3CredentialsMissing` | `spec.backup.s3.credentialsSecretRef` does not resolve. |
+| False | `PersistenceDisabled` | `spec.storage.persistence.enabled=false` — scheduled backups require persistence. |
+| (absent) | — | `spec.backup.schedule` is empty. |
+
+## RestoreApplied
+
+Terminal — once True, immutable for the lifetime of the instance.
+
+| Status | Reason | When |
+|---|---|---|
+| True | `RestoreCompleted` | `status.restoredFrom == spec.restoreFrom`. |
+| False | `Restoring` | `init-restore` init container in progress. |
+| False | `RestoreFailed` | `init-restore` exited non-zero. |
+
+## AutoUpdated
+
+The outcome of the most recent auto-update cycle.
+
+| Status | Reason | When |
+|---|---|---|
+| True | `UpToDate` | The current tag is the highest in the channel. |
+| True | `Confirmed` | A rollout completed and passed readiness watch. |
+| False | `RolloutInFlight` | A rollout is currently being watched. |
+| False | `RolledBack` | The most recent rollout failed; image reverted. |
+| False | `NoMatchingTag` | No tag in the registry matches the channel. |
+| False | `SuppressedKnownFailure` | The highest matching tag equals `status.autoUpdate.lastFailedTag`. |
+
+## AutoUpdateRolledBack
+
+Present only after a rollback. The reason embeds the failed tag.
+
+| Status | Reason | When |
+|---|---|---|
+| True | `RolledBackFrom_<tag>` | A rollback completed. The message describes why (deadline elapsed or probeFailureThreshold reached). |
+
+The condition is removed on the next successful `AutoUpdated=True` (reason=Confirmed) cycle.
+
+## MigrationCompleted
+
+Terminal — once True, immutable for the lifetime of the instance.
+
+| Status | Reason | When |
+|---|---|---|
+| True | `MigrationCompleted` | The `init-migrate-from-openclaw` init container exited 0. |
+| False | `MigrationFailed` | The migration init container exited non-zero. |
+| (absent) | — | `spec.migration.fromOpenClaw` is unset. |
