@@ -35,6 +35,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
+	"github.com/stubbi/hermes-operator/internal/oci"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -47,6 +48,7 @@ var (
 	testEnv   *envtest.Environment
 	cfg       *rest.Config
 	k8sClient client.Client
+	fakeOCI   *oci.Fake
 )
 
 func TestControllers(t *testing.T) {
@@ -93,10 +95,41 @@ var _ = BeforeSuite(func() {
 	})
 	Expect(err).ToNot(HaveOccurred())
 
+	backupSub := &BackupReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("hermes-operator"),
+	}
+	restoreSub := &RestoreReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("hermes-operator"),
+	}
+	migrationSub := &MigrationReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("hermes-operator"),
+	}
+	fakeReg := oci.NewFake()
+	fakeReg.SetTags("ghcr.io/stubbi/hermes-agent", []string{"1.0.0", "1.0.1", "1.1.0"})
+	autoUpdateSub := &AutoUpdateReconciler{
+		Client:   k8sManager.GetClient(),
+		Scheme:   k8sManager.GetScheme(),
+		Recorder: k8sManager.GetEventRecorderFor("hermes-operator"),
+		Registry: fakeReg,
+		Backup:   backupSub,
+	}
+	fakeOCI = fakeReg
+
 	err = (&HermesInstanceReconciler{
 		Client:                        k8sManager.GetClient(),
 		Scheme:                        k8sManager.GetScheme(),
 		PrometheusOperatorCRDsPresent: false,
+		Recorder:                      k8sManager.GetEventRecorderFor("hermes-operator"),
+		Backup:                        backupSub,
+		Restore:                       restoreSub,
+		AutoUpdate:                    autoUpdateSub,
+		Migration:                     migrationSub,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
