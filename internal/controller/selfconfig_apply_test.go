@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -98,4 +99,54 @@ func TestBuildWorkspaceFilesPatch_NestedPaths(t *testing.T) {
 	assert.Equal(t, "hello", cm.Data["flat.md"])
 	assert.Equal(t, "v1", cm.APIVersion)
 	assert.Equal(t, "ConfigMap", cm.Kind)
+}
+
+func TestBuildPatchConfigPayload_WritesSelfConfigYaml(t *testing.T) {
+	parent := parentInstance()
+	sc := &hermesv1.HermesSelfConfig{
+		Spec: hermesv1.HermesSelfConfigSpec{
+			PatchConfig: &apiextensionsv1.JSON{
+				Raw: []byte(`{"schedules":{"morning-brief":"0 8 * * *"}}`),
+			},
+		},
+	}
+	cm := buildPatchConfigPayload(parent, sc)
+	assert.Equal(t, "my-hermes-workspace", cm.Name)
+	got := cm.Data["selfconfig.yaml"]
+	assert.JSONEq(t, `{"schedules":{"morning-brief":"0 8 * * *"}}`, got)
+}
+
+func TestBuildPatchConfigPayload_NilPatch(t *testing.T) {
+	parent := parentInstance()
+	sc := &hermesv1.HermesSelfConfig{}
+	cm := buildPatchConfigPayload(parent, sc)
+	assert.Empty(t, cm.Data)
+}
+
+func TestMergeConfigMapPatches_CombinesKeys(t *testing.T) {
+	parent := parentInstance()
+	sc := &hermesv1.HermesSelfConfig{
+		Spec: hermesv1.HermesSelfConfigSpec{
+			PatchConfig: &apiextensionsv1.JSON{Raw: []byte(`{"x":1}`)},
+			AddWorkspaceFiles: []hermesv1.SelfConfigWorkspaceFile{
+				{Path: "a.md", Content: "x"},
+			},
+		},
+	}
+	cm := mergeConfigMapPatches(
+		buildPatchConfigPayload(parent, sc),
+		buildWorkspaceFilesPatch(parent, sc),
+	)
+	assert.Equal(t, `{"x":1}`, cm.Data["selfconfig.yaml"])
+	assert.Equal(t, "x", cm.Data["a.md"])
+}
+
+func TestMergeConfigMapPatches_NilHandling(t *testing.T) {
+	parent := parentInstance()
+	sc := &hermesv1.HermesSelfConfig{Spec: hermesv1.HermesSelfConfigSpec{
+		AddWorkspaceFiles: []hermesv1.SelfConfigWorkspaceFile{{Path: "a.md", Content: "x"}},
+	}}
+	right := buildWorkspaceFilesPatch(parent, sc)
+	assert.Same(t, right, mergeConfigMapPatches(nil, right))
+	assert.Same(t, right, mergeConfigMapPatches(right, nil))
 }

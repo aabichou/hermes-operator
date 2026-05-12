@@ -121,3 +121,43 @@ func buildWorkspaceFilesPatch(parent *hermesv1.HermesInstance, sc *hermesv1.Herm
 	}
 	return cm
 }
+
+// buildPatchConfigPayload turns a patchConfig into a partial workspace
+// ConfigMap with key "selfconfig.yaml". The hermes-agent runtime merges
+// this on top of ~/.hermes/config.yaml at startup. JSON is valid YAML, so
+// we store the patch verbatim — the agent normalises at load time.
+func buildPatchConfigPayload(parent *hermesv1.HermesInstance, sc *hermesv1.HermesSelfConfig) *corev1.ConfigMap {
+	cm := &corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ConfigMap"},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      resources.WorkspaceConfigMapName(parent),
+			Namespace: parent.Namespace,
+		},
+		Data: map[string]string{},
+	}
+	if sc.Spec.PatchConfig == nil || len(sc.Spec.PatchConfig.Raw) == 0 {
+		return cm
+	}
+	cm.Data["selfconfig.yaml"] = string(sc.Spec.PatchConfig.Raw)
+	return cm
+}
+
+// mergeConfigMapPatches combines two partial ConfigMaps of the same name into
+// one. Keys from `right` win on collision (last-write semantics on equal-shape
+// partials produced by this controller).
+func mergeConfigMapPatches(left, right *corev1.ConfigMap) *corev1.ConfigMap {
+	if left == nil {
+		return right
+	}
+	if right == nil {
+		return left
+	}
+	out := left.DeepCopy()
+	if out.Data == nil {
+		out.Data = map[string]string{}
+	}
+	for k, v := range right.Data {
+		out.Data[k] = v
+	}
+	return out
+}
