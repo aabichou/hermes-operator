@@ -189,6 +189,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controller.HermesSelfConfigReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("hermesselfconfig"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HermesSelfConfig")
+		os.Exit(1)
+	}
+
 	defaulter := &internalwebhook.HermesInstanceDefaulter{Client: mgr.GetClient()}
 	instValidator := &internalwebhook.HermesInstanceValidator{Client: mgr.GetClient()}
 	if err := hermesv1.RegisterHermesInstanceWebhook(mgr, defaulter, instValidator); err != nil {
@@ -200,7 +209,7 @@ func main() {
 		setupLog.Error(err, "unable to register HermesClusterDefaults webhook")
 		os.Exit(1)
 	}
-	scValidator := &internalwebhook.HermesSelfConfigValidator{}
+	scValidator := &internalwebhook.HermesSelfConfigValidator{Client: mgr.GetClient()}
 	if err := hermesv1.RegisterHermesSelfConfigWebhook(mgr, scValidator); err != nil {
 		setupLog.Error(err, "unable to register HermesSelfConfig webhook")
 		os.Exit(1)
