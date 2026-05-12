@@ -341,6 +341,90 @@ The allowlist policy for `HermesSelfConfig` mutations (Plan 4). Declares here so
 |---|---|---|---|
 | `spec.suspended` | `bool` | `false` | When true, scales the StatefulSet to zero replicas. State (PVC, ConfigMap, etc.) is preserved. The instance `status.phase` transitions to `Suspended`. |
 
+### `spec.runtime`
+
+Controls the Python/uv runtime concerns of the agent container.
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `python` | string | `"3.11"` | Informational. The agent image's Python version is fixed at build time. |
+| `uv.enabled` | *bool | `true` | When true, an init container runs `uv sync --frozen` against the lockfile bundled in the agent image. |
+| `uv.extraIndexURL` | string | `""` | Appended to uv's index list. Useful for private PyPI mirrors. |
+| `uv.cacheVolume.emptyDir` | EmptyDirVolumeSource | `{sizeLimit: 1Gi}` | Volume backing `/home/hermes/.cache/uv`. |
+| `uv.cacheVolume.persistentVolumeClaim` | PersistentVolumeClaimVolumeSource | nil | If set, overrides the emptyDir. |
+| `ffmpeg.enabled` | *bool | `true` | Toggles the FFmpeg dependency check (image always ships FFmpeg). |
+| `ripgrep.enabled` | *bool | `true` | Toggles the ripgrep dependency check. |
+| `extraAptPackages` | []string | `[]` | Adds APT packages via a root-privileged init container. **Security implication**: the init container runs as UID 0 for the duration of the apt install only. |
+| `extraPipPackages` | []string | `[]` | Adds Python packages via `uv pip install` into a persistent venv on the data PVC (`/home/hermes/.hermes/.venv-extras`). |
+
+### `spec.gateways`
+
+Multi-platform messaging gateway bindings. Every platform is opt-in; tokens are referenced via Secret selectors so they can be rotated independently.
+
+#### `spec.gateways.telegram`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | *bool | `false` | Toggle. Enabling requires `botTokenSecretRef`. |
+| `botTokenSecretRef` | SecretKeySelector | nil | Bot API token. Surfaced as `TELEGRAM_BOT_TOKEN`. |
+| `allowedUserIDs` | []int64 | `[]` | Allow-list of Telegram user IDs. Surfaced as `TELEGRAM_ALLOWED_USER_IDS` (comma-separated). |
+| `webhookURL` | string | `""` | Public HTTPS URL to register with Telegram. Empty = long-poll. |
+
+#### `spec.gateways.discord`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | *bool | `false` | Toggle. Enabling requires `botTokenSecretRef`. |
+| `botTokenSecretRef` | SecretKeySelector | nil | Bot token. Surfaced as `DISCORD_BOT_TOKEN`. |
+| `applicationID` | string | `""` | Application snowflake. Surfaced as `DISCORD_APPLICATION_ID`. |
+| `guildIDs` | []string | `[]` | Scopes slash-command registration. Surfaced as `DISCORD_GUILD_IDS` (comma-separated). |
+
+#### `spec.gateways.slack`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | *bool | `false` | Toggle. Enabling requires `botTokenSecretRef`. |
+| `botTokenSecretRef` | SecretKeySelector | nil | `xoxb-` bot token. Surfaced as `SLACK_BOT_TOKEN`. |
+| `appTokenSecretRef` | SecretKeySelector | nil | `xapp-` app-level token for Socket Mode. Surfaced as `SLACK_APP_TOKEN`. |
+| `signingSecretRef` | SecretKeySelector | nil | Slack signing secret. Surfaced as `SLACK_SIGNING_SECRET`. |
+
+#### `spec.gateways.whatsapp`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | *bool | `false` | Toggle. Enabling requires `providerSecretRef`. |
+| `providerSecretRef` | SecretKeySelector | nil | Provider credentials. The whole Secret is mounted as env with prefix `WHATSAPP_`. |
+
+#### `spec.gateways.signal`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | *bool | `false` | Toggle. Enabling requires both `phoneNumberSecretRef` and `authTokenSecretRef`. |
+| `phoneNumberSecretRef` | SecretKeySelector | nil | Registered phone number. Surfaced as `SIGNAL_PHONE_NUMBER`. |
+| `authTokenSecretRef` | SecretKeySelector | nil | Auth token for signal-cli-rest-api. Surfaced as `SIGNAL_AUTH_TOKEN`. |
+
+### `spec.profileStore`
+
+Optional companion service for the Honcho dialectic profile store.
+
+#### `spec.profileStore.honcho`
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `enabled` | *bool | `false` | Toggle. Enabling requires `apiKeySecretRef`. |
+| `image.repository` | string | `"ghcr.io/plastic-labs/honcho"` | Honcho image. |
+| `image.tag` | string | `"0.1.0"` | Honcho image tag. |
+| `image.pullPolicy` | string | `IfNotPresent` | One of `Always`, `IfNotPresent`, `Never`. |
+| `persistence.enabled` | *bool | `true` | Whether to create a PVC for Honcho. |
+| `persistence.size` | string | `"5Gi"` | PVC size. |
+| `persistence.storageClassName` | *string | nil | PVC storage class. |
+| `resources` | ResourceRequirements | `{}` | Honcho container resource requests/limits. |
+| `apiKeySecretRef` | SecretKeySelector | nil | API key the agent uses to authenticate. Surfaced as `HONCHO_API_KEY` on both the agent and the Honcho container. |
+
+The agent receives `HONCHO_BASE_URL=http://<inst>-honcho:8000` automatically.
+
+The Honcho-side PVC layout that Plan 4's `addProfileSnapshot` Job writes to is `/data/snapshots/<profileID>/<RFC3339-timestamp>.json` (relative to the Honcho container, which mounts the PVC at `/data`).
+
 ### HermesInstance status
 
 | Field | Type | Description |
