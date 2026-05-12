@@ -6,7 +6,7 @@
 
 Kubernetes operator for [nousresearch/hermes-agent](https://github.com/nousresearch/hermes-agent) — a Python-based self-improving multi-platform AI agent.
 
-> **Status: alpha.** Plans 1–2 of 7 shipped (minimal happy path + full spec).
+> **Status: alpha.** Plans 1–3 of 7 shipped (minimal happy path + full spec + runtime/gateways/profileStore).
 
 ## Features
 
@@ -24,7 +24,9 @@ Kubernetes operator for [nousresearch/hermes-agent](https://github.com/nousresea
 | Prometheus ServiceMonitor + PrometheusRule | ✅ v1.0 | Plan 2 |
 | `spec.suspended` scale-to-zero | ✅ v1.0 | Plan 2 |
 | cert-manager-driven webhook TLS | ✅ v1.0 | Plan 2 |
-| `spec.runtime` (Python/uv), gateways, profileStore | ⏳ pending | Plan 3 |
+| Python runtime + uv lockfile (init containers for `uv sync`, extra apt/pip) | ✅ v1.0 | Plan 3 |
+| Multi-platform gateways (Telegram, Discord, Slack, WhatsApp, Signal) | ✅ v1.0 | Plan 3 |
+| Honcho profile store (sibling Deployment+Service+PVC+NP, env-injected) | ✅ v1.0 | Plan 3 |
 | HermesSelfConfig (agent self-mutations via SSA) | ⏳ pending | Plan 4 |
 | Backup / restore / autoupdate / migration | ⏳ pending | Plan 5 |
 | OLM bundle + GoReleaser + conformance suite | ⏳ pending | Plan 6 |
