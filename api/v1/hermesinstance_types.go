@@ -17,6 +17,7 @@ limitations under the License.
 package v1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
@@ -24,14 +25,101 @@ import (
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // HermesInstanceSpec defines the desired state of HermesInstance.
+// Field order follows design §4.
 type HermesInstanceSpec struct {
-	// Image controls which hermes-agent container image to run.
+	// Image selects the hermes-agent container image.
 	// +optional
 	Image ImageSpec `json:"image,omitempty"`
+
+	// Config is the YAML content of ~/.hermes/config.yaml, supplied inline,
+	// from a referenced ConfigMap, or merged from both.
+	// +optional
+	Config ConfigSpec `json:"config,omitempty"`
+
+	// Workspace seeds initial files and directories into ~/.hermes on first start.
+	// +optional
+	Workspace WorkspaceSpec `json:"workspace,omitempty"`
+
+	// Resources sets the agent container's CPU/memory requests + limits.
+	// +optional
+	Resources ResourcesSpec `json:"resources,omitempty"`
+
+	// Security configures pod/container security contexts, RBAC, NetworkPolicy,
+	// and the optional cluster CA bundle injection.
+	// +optional
+	Security SecuritySpec `json:"security,omitempty"`
 
 	// Storage controls the PVC backing ~/.hermes for this instance.
 	// +optional
 	Storage StorageSpec `json:"storage,omitempty"`
+
+	// Networking exposes the agent via Service / Ingress.
+	// +optional
+	Networking NetworkingSpec `json:"networking,omitempty"`
+
+	// Observability turns on metrics, ServiceMonitor, PrometheusRule, and logging.
+	// +optional
+	Observability ObservabilitySpec `json:"observability,omitempty"`
+
+	// Availability sets PDB, HPA, and topology-spread constraints.
+	// +optional
+	Availability AvailabilitySpec `json:"availability,omitempty"`
+
+	// Probes lets users override the built-in liveness/readiness/startup probes.
+	// +optional
+	Probes ProbesSpec `json:"probes,omitempty"`
+
+	// Scheduling targets the agent pod at specific nodes.
+	// +optional
+	Scheduling SchedulingSpec `json:"scheduling,omitempty"`
+
+	// InitContainers is a user-supplied list of init containers appended after
+	// any operator-managed init containers (e.g. runtime-init from Plan 3).
+	// +optional
+	InitContainers []corev1.Container `json:"initContainers,omitempty"`
+
+	// Sidecars is a user-supplied list of sidecars appended after operator-managed
+	// sidecars (e.g. ollama / web-terminal / tailscale from Plan 3).
+	// +optional
+	Sidecars []corev1.Container `json:"sidecars,omitempty"`
+
+	// ExtraVolumes is a user-supplied list of additional pod volumes.
+	// +optional
+	ExtraVolumes []corev1.Volume `json:"extraVolumes,omitempty"`
+
+	// ExtraVolumeMounts is a user-supplied list of additional volume mounts
+	// applied to the agent container.
+	// +optional
+	ExtraVolumeMounts []corev1.VolumeMount `json:"extraVolumeMounts,omitempty"`
+
+	// EnvFrom is a list of EnvFrom sources (ConfigMap/Secret refs) injected
+	// into the agent container.
+	// +optional
+	EnvFrom []corev1.EnvFromSource `json:"envFrom,omitempty"`
+
+	// Env is a list of explicit environment variables for the agent container.
+	// SSA list-map key is "name" so HermesSelfConfig can merge entries without
+	// replacing the whole list.
+	// +listType=map
+	// +listMapKey=name
+	// +optional
+	Env []corev1.EnvVar `json:"env,omitempty"`
+
+	// Skills is the declarative list of uv-installable skill sources. Plan 3
+	// wires the runtime; the field is declared here so SSA from HermesSelfConfig
+	// (Plan 4) can target it without a CRD schema change.
+	// +listType=map
+	// +listMapKey=source
+	// +optional
+	Skills []InstanceSkill `json:"skills,omitempty"`
+
+	// SelfConfigure is the allowlist policy for HermesSelfConfig mutations.
+	// +optional
+	SelfConfigure SelfConfigureSpec `json:"selfConfigure,omitempty"`
+
+	// Suspended scales the StatefulSet to zero replicas without deleting state.
+	// +optional
+	Suspended bool `json:"suspended,omitempty"`
 }
 
 // ImageSpec selects an OCI image.
@@ -67,6 +155,44 @@ type PersistenceSpec struct {
 	// +optional
 	StorageClassName *string `json:"storageClassName,omitempty"`
 }
+
+// ConfigSpec — populated in Task 3.
+type ConfigSpec struct{}
+
+// WorkspaceSpec — populated in Task 4.
+type WorkspaceSpec struct{}
+
+// ResourcesSpec — populated in Task 5.
+type ResourcesSpec struct{}
+
+// SecuritySpec — populated in Task 6.
+type SecuritySpec struct{}
+
+// NetworkingSpec — populated in Task 7.
+type NetworkingSpec struct{}
+
+// ObservabilitySpec — populated in Task 8.
+type ObservabilitySpec struct{}
+
+// AvailabilitySpec — populated in Task 9.
+type AvailabilitySpec struct{}
+
+// ProbesSpec — populated in Task 9.
+type ProbesSpec struct{}
+
+// SchedulingSpec — populated in Task 9.
+type SchedulingSpec struct{}
+
+// InstanceSkill — Plan 3 fills the runtime semantics. The field exists here so
+// SSA from HermesSelfConfig (Plan 4) can patch the slice with listMapKey=source.
+type InstanceSkill struct {
+	// Source is the uv/pip-compatible install source.
+	// +kubebuilder:validation:MinLength=1
+	Source string `json:"source"`
+}
+
+// SelfConfigureSpec — populated in Task 9.
+type SelfConfigureSpec struct{}
 
 // HermesInstanceStatus reflects the observed state of HermesInstance.
 type HermesInstanceStatus struct {
