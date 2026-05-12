@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,7 +13,7 @@ import (
 )
 
 func TestBuildStatefulSet_NameNamespaceLabels(t *testing.T) {
-	sts := BuildStatefulSet(minimalInstance())
+	sts := BuildStatefulSet(minimalInstance(), nil)
 	assert.Equal(t, "demo", sts.Name)
 	assert.Equal(t, "agents", sts.Namespace)
 	assert.Equal(t, "hermes-agent", sts.Labels["app.kubernetes.io/name"])
@@ -23,7 +24,7 @@ func TestBuildStatefulSet_ContainerImage(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.Image.Repository = "ghcr.io/stubbi/hermes-agent"
 	inst.Spec.Image.Tag = "v1.0.0"
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	require := sts.Spec.Template.Spec.Containers
 	assert.Len(t, require, 1)
 	assert.Equal(t, "ghcr.io/stubbi/hermes-agent:v1.0.0", require[0].Image)
@@ -31,7 +32,7 @@ func TestBuildStatefulSet_ContainerImage(t *testing.T) {
 }
 
 func TestBuildStatefulSet_ExplicitK8sDefaults(t *testing.T) {
-	sts := BuildStatefulSet(minimalInstance())
+	sts := BuildStatefulSet(minimalInstance(), nil)
 	podSpec := sts.Spec.Template.Spec
 
 	assert.NotNil(t, sts.Spec.RevisionHistoryLimit)
@@ -48,7 +49,7 @@ func TestBuildStatefulSet_ExplicitK8sDefaults(t *testing.T) {
 }
 
 func TestBuildStatefulSet_HardenedPodSecurity(t *testing.T) {
-	sts := BuildStatefulSet(minimalInstance())
+	sts := BuildStatefulSet(minimalInstance(), nil)
 	pc := sts.Spec.Template.Spec.SecurityContext
 	require := sts.Spec.Template.Spec.Containers[0].SecurityContext
 	assert.NotNil(t, pc.RunAsNonRoot)
@@ -61,7 +62,7 @@ func TestBuildStatefulSet_HardenedPodSecurity(t *testing.T) {
 }
 
 func TestBuildStatefulSet_VolumesAndMounts(t *testing.T) {
-	sts := BuildStatefulSet(minimalInstance())
+	sts := BuildStatefulSet(minimalInstance(), nil)
 	c := sts.Spec.Template.Spec.Containers[0]
 
 	mountNames := map[string]string{}
@@ -92,7 +93,7 @@ func TestBuildStatefulSet_HonorsResources(t *testing.T) {
 			corev1.ResourceMemory: resource.MustParse("512Mi"),
 		},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	c := sts.Spec.Template.Spec.Containers[0]
 	assert.Equal(t, resource.MustParse("100m"), c.Resources.Requests[corev1.ResourceCPU])
 	assert.Equal(t, resource.MustParse("512Mi"), c.Resources.Limits[corev1.ResourceMemory])
@@ -107,7 +108,7 @@ func TestBuildStatefulSet_OverridesSecurityContexts(t *testing.T) {
 	inst.Spec.Security.ContainerSecurityContext = &corev1.SecurityContext{
 		ReadOnlyRootFilesystem: Ptr(false),
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	assert.Equal(t, int64(2000), *sts.Spec.Template.Spec.SecurityContext.RunAsUser)
 	assert.False(t, *sts.Spec.Template.Spec.Containers[0].SecurityContext.ReadOnlyRootFilesystem)
 }
@@ -122,7 +123,7 @@ func TestBuildStatefulSet_ProbeOverrides(t *testing.T) {
 		FailureThreshold:    5,
 		TimeoutSeconds:      2,
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	c := sts.Spec.Template.Spec.Containers[0]
 	assert.NotNil(t, c.LivenessProbe)
 	assert.Equal(t, int32(30), c.LivenessProbe.InitialDelaySeconds)
@@ -143,7 +144,7 @@ func TestBuildStatefulSet_Scheduling(t *testing.T) {
 			},
 		},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	podSpec := sts.Spec.Template.Spec
 	assert.Equal(t, "ssd", podSpec.NodeSelector["disktype"])
 	assert.Len(t, podSpec.Tolerations, 1)
@@ -158,7 +159,7 @@ func TestBuildStatefulSet_TopologySpread(t *testing.T) {
 		{TopologyKey: "topology.kubernetes.io/zone", WhenUnsatisfiable: corev1.ScheduleAnyway, MaxSkew: 1,
 			LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}}},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	assert.Len(t, sts.Spec.Template.Spec.TopologySpreadConstraints, 1)
 }
 
@@ -167,7 +168,7 @@ func TestBuildStatefulSet_InitContainersAndSidecars(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.InitContainers = []corev1.Container{{Name: "user-init", Image: "alpine"}}
 	inst.Spec.Sidecars = []corev1.Container{{Name: "user-side", Image: "alpine"}}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	var sawInit, sawSide bool
 	for _, c := range sts.Spec.Template.Spec.InitContainers {
 		if c.Name == "user-init" {
@@ -188,7 +189,7 @@ func TestBuildStatefulSet_ExtraVolumesAndMounts(t *testing.T) {
 	inst := minimalInstance()
 	inst.Spec.ExtraVolumes = []corev1.Volume{{Name: "user-vol", VolumeSource: corev1.VolumeSource{EmptyDir: &corev1.EmptyDirVolumeSource{}}}}
 	inst.Spec.ExtraVolumeMounts = []corev1.VolumeMount{{Name: "user-vol", MountPath: "/user"}}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	var sawVol, sawMount bool
 	for _, v := range sts.Spec.Template.Spec.Volumes {
 		if v.Name == "user-vol" {
@@ -211,7 +212,7 @@ func TestBuildStatefulSet_EnvAndEnvFrom(t *testing.T) {
 	inst.Spec.EnvFrom = []corev1.EnvFromSource{
 		{SecretRef: &corev1.SecretEnvSource{LocalObjectReference: corev1.LocalObjectReference{Name: "user-secret"}}},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	c := sts.Spec.Template.Spec.Containers[0]
 	var sawEnv, sawEnvFrom bool
 	for _, e := range c.Env {
@@ -231,11 +232,11 @@ func TestBuildStatefulSet_EnvAndEnvFrom(t *testing.T) {
 func TestBuildStatefulSet_ServiceAccountName(t *testing.T) {
 	t.Parallel()
 	inst := minimalInstance()
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	assert.Equal(t, "demo", sts.Spec.Template.Spec.ServiceAccountName)
 
 	inst.Spec.Security.RBAC.ServiceAccountName = "byo-sa"
-	sts2 := BuildStatefulSet(inst)
+	sts2 := BuildStatefulSet(inst, nil)
 	assert.Equal(t, "byo-sa", sts2.Spec.Template.Spec.ServiceAccountName)
 }
 
@@ -243,7 +244,7 @@ func TestBuildStatefulSet_WorkspaceVolumeMounted(t *testing.T) {
 	t.Parallel()
 	inst := minimalInstance()
 	inst.Spec.Workspace.InitialFiles = []hermesv1.WorkspaceFile{{Path: "a.md", Content: "x"}}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	var sawVol bool
 	for _, v := range sts.Spec.Template.Spec.Volumes {
 		if v.Name == "workspace" && v.ConfigMap != nil && v.ConfigMap.Name == "demo-workspace" {
@@ -257,7 +258,7 @@ func TestBuildStatefulSet_CABundleConfigMapMounted(t *testing.T) {
 	t.Parallel()
 	inst := minimalInstance()
 	inst.Spec.Security.CABundle = hermesv1.CABundleSpec{ConfigMapName: "corp-ca", Key: "ca.crt"}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	var sawCA bool
 	for _, v := range sts.Spec.Template.Spec.Volumes {
 		if v.Name == "ca-bundle" {
@@ -279,7 +280,7 @@ func TestBuildStatefulSet_Suspended(t *testing.T) {
 	t.Parallel()
 	inst := minimalInstance()
 	inst.Spec.Suspended = true
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	assert.NotNil(t, sts.Spec.Replicas)
 	assert.Equal(t, int32(0), *sts.Spec.Replicas)
 }
@@ -287,7 +288,7 @@ func TestBuildStatefulSet_Suspended(t *testing.T) {
 func TestBuildStatefulSet_NotSuspendedDefaultReplica(t *testing.T) {
 	t.Parallel()
 	inst := minimalInstance()
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	assert.NotNil(t, sts.Spec.Replicas)
 	assert.Equal(t, int32(1), *sts.Spec.Replicas)
 }
@@ -299,7 +300,7 @@ func TestBuildStatefulSet_RuntimeInitContainersAppended(t *testing.T) {
 		UV:               hermesv1.UVSpec{Enabled: Ptr(true)},
 		ExtraPipPackages: []string{"polars"},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	names := []string{}
 	for _, c := range sts.Spec.Template.Spec.InitContainers {
 		names = append(names, c.Name)
@@ -320,7 +321,7 @@ func TestBuildStatefulSet_GatewayEnvWired(t *testing.T) {
 			},
 		},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	c := sts.Spec.Template.Spec.Containers[0]
 	hasToken := false
 	for _, e := range c.Env {
@@ -343,7 +344,7 @@ func TestBuildStatefulSet_HonchoEnvWired(t *testing.T) {
 			},
 		},
 	}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	c := sts.Spec.Template.Spec.Containers[0]
 	byName := map[string]corev1.EnvVar{}
 	for _, e := range c.Env {
@@ -357,7 +358,7 @@ func TestBuildStatefulSet_UVCacheVolume(t *testing.T) {
 	t.Parallel()
 	inst := minimalInstance()
 	inst.Spec.Runtime = hermesv1.RuntimeSpec{UV: hermesv1.UVSpec{Enabled: Ptr(true)}}
-	sts := BuildStatefulSet(inst)
+	sts := BuildStatefulSet(inst, nil)
 	found := false
 	for _, v := range sts.Spec.Template.Spec.Volumes {
 		if v.Name == "uv-cache" {
@@ -393,7 +394,18 @@ func TestBuildStatefulSet_IdempotentWithRuntimeGatewaysHoncho(t *testing.T) {
 			APIKeySecretRef: &corev1.SecretKeySelector{LocalObjectReference: corev1.LocalObjectReference{Name: "honcho"}, Key: "api-key"},
 		},
 	}
-	a := BuildStatefulSet(inst)
-	b := BuildStatefulSet(inst)
+	a := BuildStatefulSet(inst, nil)
+	b := BuildStatefulSet(inst, nil)
 	assert.Equal(t, a, b, "pure builder must be deterministic")
+}
+
+func TestBuildStatefulSet_AcceptsInitContainers(t *testing.T) {
+	inst := minimalInstance()
+	initC := corev1.Container{Name: "init-restore", Image: "restic/restic:0.16.4"}
+	sts := BuildStatefulSet(inst, []corev1.Container{initC})
+	require.NotNil(t, sts)
+	// extraInits must come BEFORE operator-managed inits — restore writes to PVC
+	// before runtime-init starts touching it.
+	require.NotEmpty(t, sts.Spec.Template.Spec.InitContainers)
+	assert.Equal(t, "init-restore", sts.Spec.Template.Spec.InitContainers[0].Name)
 }

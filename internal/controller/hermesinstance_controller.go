@@ -405,7 +405,7 @@ func (r *HermesInstanceReconciler) reconcileStatefulSet(ctx context.Context, ins
 		Name: resources.StatefulSetName(inst), Namespace: inst.Namespace,
 	}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
-		desired := resources.BuildStatefulSet(inst)
+		desired := resources.BuildStatefulSet(inst, nil)
 		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
 		obj.Spec = desired.Spec
 		return controllerutil.SetControllerReference(inst, obj, r.Scheme)

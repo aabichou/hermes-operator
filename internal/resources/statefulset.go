@@ -16,7 +16,9 @@ func StatefulSetName(inst *hermesv1.HermesInstance) string { return inst.Name }
 
 // BuildStatefulSet constructs the desired StatefulSet. Every k8s server-side
 // default is set explicitly to avoid metadata.generation thrash on reconcile.
-func BuildStatefulSet(inst *hermesv1.HermesInstance) *appsv1.StatefulSet {
+// extraInits is prepended before operator-managed init containers so that
+// restore/migration runs BEFORE runtime-init touches the PVC.
+func BuildStatefulSet(inst *hermesv1.HermesInstance, extraInits []corev1.Container) *appsv1.StatefulSet {
 	labels := LabelsForInstance(inst)
 	selector := map[string]string{
 		"app.kubernetes.io/name":     "hermes-agent",
@@ -213,9 +215,8 @@ func BuildStatefulSet(inst *hermesv1.HermesInstance) *appsv1.StatefulSet {
 		podSpec.Volumes = append(podSpec.Volumes, corev1.Volume{Name: "ca-bundle", VolumeSource: *caBundleVolumeSource})
 	}
 
-	// Append sidecars, init containers, and extra volumes
+	// Append sidecars and extra volumes (init containers assembled below)
 	podSpec.Containers = append(podSpec.Containers, inst.Spec.Sidecars...)
-	podSpec.InitContainers = append(podSpec.InitContainers, inst.Spec.InitContainers...)
 	podSpec.Volumes = append(podSpec.Volumes, inst.Spec.ExtraVolumes...)
 
 	// Determine replicas based on suspended state
@@ -255,11 +256,15 @@ func BuildStatefulSet(inst *hermesv1.HermesInstance) *appsv1.StatefulSet {
 		},
 	}
 
-	// --- Plan 3: runtime init containers + volumes ---
-	sts.Spec.Template.Spec.InitContainers = append(
-		sts.Spec.Template.Spec.InitContainers,
-		BuildRuntimeInitContainers(inst)...,
-	)
+	// Assemble init containers: extraInits (restore/migration) → operator-managed
+	// (runtime-init) → user-supplied. Order matters: restore must populate the PVC
+	// before runtime-init starts writing to it.
+	inits := append([]corev1.Container{}, extraInits...)
+	inits = append(inits, BuildRuntimeInitContainers(inst)...)
+	inits = append(inits, inst.Spec.InitContainers...)
+	sts.Spec.Template.Spec.InitContainers = inits
+
+	// --- Plan 3: runtime volumes ---
 	sts.Spec.Template.Spec.Volumes = append(
 		sts.Spec.Template.Spec.Volumes,
 		BuildRuntimeVolumes(inst)...,
