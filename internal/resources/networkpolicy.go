@@ -127,5 +127,78 @@ func buildEgressRules(inst *hermesv1.HermesInstance) []networkingv1.NetworkPolic
 
 	rules = append(rules, inst.Spec.Security.NetworkPolicy.AdditionalEgress...)
 
+	rules = append(rules, ExtraEgressRules(inst)...)
 	return rules
+}
+
+// ExtraEgressRules returns the per-instance egress rules driven by spec.gateways
+// and spec.profileStore. Plan 2's base default-deny baseline opens DNS + TCP/443
+// already; these rules add (1) explicit per-gateway endpoints (still TCP/443
+// but documented per gateway) and (2) egress to the Honcho sibling pod on
+// TCP/8000 when ProfileStore.Honcho is enabled.
+func ExtraEgressRules(inst *hermesv1.HermesInstance) []networkingv1.NetworkPolicyEgressRule {
+	var rules []networkingv1.NetworkPolicyEgressRule
+
+	if endpoints := BuildGatewayEgressEndpoints(inst); len(endpoints) > 0 {
+		port443 := intstr.FromInt(443)
+		tcp := corev1.ProtocolTCP
+		rules = append(rules, networkingv1.NetworkPolicyEgressRule{
+			// No `To` => all destinations. Hostname-level allow-listing is a
+			// CNI-implementation concern; see docs/conventions.md.
+			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port443}},
+		})
+	}
+
+	if honchoEnabled(inst) {
+		port8000 := intstr.FromInt(8000)
+		tcp := corev1.ProtocolTCP
+		rules = append(rules, networkingv1.NetworkPolicyEgressRule{
+			To: []networkingv1.NetworkPolicyPeer{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{
+					"app.kubernetes.io/name":     "honcho",
+					"app.kubernetes.io/instance": HonchoDeploymentName(inst),
+				}},
+			}},
+			Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port8000}},
+		})
+	}
+
+	return rules
+}
+
+// BuildHonchoNetworkPolicy returns the NetworkPolicy that scopes the Honcho
+// companion: ingress only from the parent hermes pod, egress denied entirely.
+// Returns nil when honcho is not enabled.
+func BuildHonchoNetworkPolicy(inst *hermesv1.HermesInstance) *networkingv1.NetworkPolicy {
+	if !honchoEnabled(inst) {
+		return nil
+	}
+	port8000 := intstr.FromInt(8000)
+	tcp := corev1.ProtocolTCP
+	return &networkingv1.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      HonchoDeploymentName(inst),
+			Namespace: inst.Namespace,
+			Labels:    HonchoLabels(inst),
+		},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{
+				"app.kubernetes.io/name":     "honcho",
+				"app.kubernetes.io/instance": HonchoDeploymentName(inst),
+			}},
+			PolicyTypes: []networkingv1.PolicyType{
+				networkingv1.PolicyTypeIngress,
+				networkingv1.PolicyTypeEgress,
+			},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{
+				From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{
+						"app.kubernetes.io/name":     "hermes-agent",
+						"app.kubernetes.io/instance": inst.Name,
+					}},
+				}},
+				Ports: []networkingv1.NetworkPolicyPort{{Protocol: &tcp, Port: &port8000}},
+			}},
+		},
+	}
 }
