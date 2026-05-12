@@ -1,0 +1,21 @@
+image:
+  repository: ghcr.io/stubbi/hermes-operator
+  tag: ""
+  pullPolicy: IfNotPresent
+
+logLevel: info
+
+createRBAC: true
+
+watchNamespaces: []
+
+metrics:
+  secure: true
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi

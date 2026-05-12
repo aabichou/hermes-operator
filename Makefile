@@ -76,6 +76,12 @@ lint: golangci-lint ## Run golangci-lint linter
 lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 	$(GOLANGCI_LINT) run --fix
 
+.PHONY: sync-chart-crds
+sync-chart-crds: manifests ## Copy generated CRDs into the Helm chart.
+	rm -rf charts/hermes-operator/templates/crds
+	mkdir -p charts/hermes-operator/templates/crds
+	cp config/crd/bases/*.yaml charts/hermes-operator/templates/crds/
+
 ##@ Build
 
 .PHONY: build

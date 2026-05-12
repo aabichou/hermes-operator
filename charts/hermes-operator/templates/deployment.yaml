@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "hermes-operator.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels: {{- include "hermes-operator.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "hermes-operator.fullname" . }}
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "hermes-operator.fullname" . }}
+    spec:
+      serviceAccountName: {{ include "hermes-operator.fullname" . }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: manager
+          image: {{ include "hermes-operator.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --log-level={{ .Values.logLevel }}
+            - --metrics-secure={{ .Values.metrics.secure }}
+            {{- range .Values.watchNamespaces }}
+            - --watch-namespace={{ . }}
+            {{- end }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: [ALL] }
+          ports:
+            - name: metrics
+              containerPort: 8443
+              protocol: TCP
