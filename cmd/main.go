@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"crypto/tls"
 	"flag"
 	"os"
@@ -27,7 +28,9 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/discovery"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -37,6 +40,7 @@ import (
 
 	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
 	"github.com/stubbi/hermes-operator/internal/controller"
+	internalwebhook "github.com/stubbi/hermes-operator/internal/webhook"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -50,6 +54,25 @@ func init() {
 
 	utilruntime.Must(hermesv1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
+}
+
+// prometheusOperatorCRDsPresent returns true when monitoring.coreos.com API
+// group is registered. Probed once at startup; the reconciler caches the result.
+func prometheusOperatorCRDsPresent(ctx context.Context, cfg *rest.Config) bool {
+	dc, err := discovery.NewDiscoveryClientForConfig(cfg)
+	if err != nil {
+		return false
+	}
+	groups, err := dc.ServerGroups()
+	if err != nil {
+		return false
+	}
+	for _, g := range groups.Groups {
+		if g.Name == "monitoring.coreos.com" {
+			return true
+		}
+	}
+	return false
 }
 
 func main() {
@@ -144,11 +167,42 @@ func main() {
 		os.Exit(1)
 	}
 
+	hasPromOpCRDs := prometheusOperatorCRDsPresent(context.Background(), mgr.GetConfig())
+	setupLog.Info("prometheus-operator CRDs probed", "present", hasPromOpCRDs)
+
 	if err := (&controller.HermesInstanceReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:                        mgr.GetClient(),
+		Scheme:                        mgr.GetScheme(),
+		Recorder:                      mgr.GetEventRecorderFor("hermesinstance"),
+		PrometheusOperatorCRDsPresent: hasPromOpCRDs,
 	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "Failed to create controller", "controller", "hermesinstance")
+		setupLog.Error(err, "unable to create controller", "controller", "HermesInstance")
+		os.Exit(1)
+	}
+
+	if err := (&controller.HermesClusterDefaultsReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: mgr.GetEventRecorderFor("hermesclusterdefaults"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "HermesClusterDefaults")
+		os.Exit(1)
+	}
+
+	defaulter := &internalwebhook.HermesInstanceDefaulter{Client: mgr.GetClient()}
+	instValidator := &internalwebhook.HermesInstanceValidator{}
+	if err := hermesv1.RegisterHermesInstanceWebhook(mgr, defaulter, instValidator); err != nil {
+		setupLog.Error(err, "unable to register HermesInstance webhook")
+		os.Exit(1)
+	}
+	hcdValidator := &internalwebhook.HermesClusterDefaultsValidator{}
+	if err := hermesv1.RegisterHermesClusterDefaultsWebhook(mgr, hcdValidator); err != nil {
+		setupLog.Error(err, "unable to register HermesClusterDefaults webhook")
+		os.Exit(1)
+	}
+	scValidator := &internalwebhook.HermesSelfConfigValidator{}
+	if err := hermesv1.RegisterHermesSelfConfigWebhook(mgr, scValidator); err != nil {
+		setupLog.Error(err, "unable to register HermesSelfConfig webhook")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
