@@ -124,6 +124,12 @@ type HermesInstanceSpec struct {
 	// Suspended scales the StatefulSet to zero replicas without deleting state.
 	// +optional
 	Suspended bool `json:"suspended,omitempty"`
+
+	// Runtime controls the agent's Python toolchain and OS-level dependencies.
+	// All fields default to the values that match the operator's published
+	// ghcr.io/stubbi/hermes-agent image.
+	// +optional
+	Runtime RuntimeSpec `json:"runtime,omitempty"`
 }
 
 // ImageSpec selects an OCI image.
@@ -808,6 +814,86 @@ type HermesInstanceList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitzero"`
 	Items           []HermesInstance `json:"items"`
+}
+
+// RuntimeSpec controls Python/uv runtime concerns for the agent container.
+type RuntimeSpec struct {
+	// Python is informational only — the agent image's Python version is fixed
+	// at build time. Setting this does NOT pull a different interpreter; it
+	// exists so downstream tooling can assert the runtime it expects.
+	// +kubebuilder:default="3.11"
+	// +optional
+	Python string `json:"python,omitempty"`
+
+	// UV controls the initial `uv sync` against the lockfile bundled in the
+	// agent image. Enabled by default.
+	// +optional
+	UV UVSpec `json:"uv,omitempty"`
+
+	// FFmpeg toggles the FFmpeg dependency check. The agent image always ships
+	// FFmpeg; disabling here only skips the readiness assertion.
+	// +optional
+	FFmpeg FFmpegSpec `json:"ffmpeg,omitempty"`
+
+	// Ripgrep toggles the ripgrep dependency check. See FFmpeg.
+	// +optional
+	Ripgrep RipgrepSpec `json:"ripgrep,omitempty"`
+
+	// ExtraAptPackages adds additional Debian packages installed by a
+	// root-privileged init container BEFORE the main agent container starts.
+	// Use sparingly: the init container runs as root and breaks the otherwise
+	// hardened security posture for one container only.
+	// +listType=atomic
+	// +optional
+	ExtraAptPackages []string `json:"extraAptPackages,omitempty"`
+
+	// ExtraPipPackages adds additional Python packages installed via
+	// `uv pip install` into a persistent venv on the data PVC.
+	// +listType=atomic
+	// +optional
+	ExtraPipPackages []string `json:"extraPipPackages,omitempty"`
+}
+
+// UVSpec controls the `uv sync` init container.
+type UVSpec struct {
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// ExtraIndexURL is appended to uv's index list. Useful for private PyPI
+	// mirrors. Empty by default.
+	// +optional
+	ExtraIndexURL string `json:"extraIndexURL,omitempty"`
+
+	// CacheVolume controls the volume mounted at /home/hermes/.cache/uv.
+	// Defaults to an emptyDir with a 1Gi sizeLimit — fast and ephemeral.
+	// +optional
+	CacheVolume UVCacheVolumeSpec `json:"cacheVolume,omitempty"`
+}
+
+// UVCacheVolumeSpec mirrors a stripped-down VolumeSource union. Exactly one of
+// EmptyDir or PersistentVolumeClaim may be set; the defaulter fills EmptyDir
+// when both are nil.
+type UVCacheVolumeSpec struct {
+	// +optional
+	EmptyDir *corev1.EmptyDirVolumeSource `json:"emptyDir,omitempty"`
+
+	// +optional
+	PersistentVolumeClaim *corev1.PersistentVolumeClaimVolumeSource `json:"persistentVolumeClaim,omitempty"`
+}
+
+// FFmpegSpec controls the FFmpeg dependency check.
+type FFmpegSpec struct {
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+}
+
+// RipgrepSpec controls the ripgrep dependency check.
+type RipgrepSpec struct {
+	// +kubebuilder:default=true
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
 }
 
 func init() {

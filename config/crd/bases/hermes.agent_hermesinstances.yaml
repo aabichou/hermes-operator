@@ -4574,6 +4574,121 @@ spec:
                     description: Requests is the resource-requests map.
                     type: object
                 type: object
+              runtime:
+                description: |-
+                  Runtime controls the agent's Python toolchain and OS-level dependencies.
+                  All fields default to the values that match the operator's published
+                  ghcr.io/stubbi/hermes-agent image.
+                properties:
+                  extraAptPackages:
+                    description: |-
+                      ExtraAptPackages adds additional Debian packages installed by a
+                      root-privileged init container BEFORE the main agent container starts.
+                      Use sparingly: the init container runs as root and breaks the otherwise
+                      hardened security posture for one container only.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  extraPipPackages:
+                    description: |-
+                      ExtraPipPackages adds additional Python packages installed via
+                      `uv pip install` into a persistent venv on the data PVC.
+                    items:
+                      type: string
+                    type: array
+                    x-kubernetes-list-type: atomic
+                  ffmpeg:
+                    description: |-
+                      FFmpeg toggles the FFmpeg dependency check. The agent image always ships
+                      FFmpeg; disabling here only skips the readiness assertion.
+                    properties:
+                      enabled:
+                        default: true
+                        type: boolean
+                    type: object
+                  python:
+                    default: "3.11"
+                    description: |-
+                      Python is informational only — the agent image's Python version is fixed
+                      at build time. Setting this does NOT pull a different interpreter; it
+                      exists so downstream tooling can assert the runtime it expects.
+                    type: string
+                  ripgrep:
+                    description: Ripgrep toggles the ripgrep dependency check. See
+                      FFmpeg.
+                    properties:
+                      enabled:
+                        default: true
+                        type: boolean
+                    type: object
+                  uv:
+                    description: |-
+                      UV controls the initial `uv sync` against the lockfile bundled in the
+                      agent image. Enabled by default.
+                    properties:
+                      cacheVolume:
+                        description: |-
+                          CacheVolume controls the volume mounted at /home/hermes/.cache/uv.
+                          Defaults to an emptyDir with a 1Gi sizeLimit — fast and ephemeral.
+                        properties:
+                          emptyDir:
+                            description: |-
+                              Represents an empty directory for a pod.
+                              Empty directory volumes support ownership management and SELinux relabeling.
+                            properties:
+                              medium:
+                                description: |-
+                                  medium represents what type of storage medium should back this directory.
+                                  The default is "" which means to use the node's default medium.
+                                  Must be an empty string (default) or Memory.
+                                  More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
+                                type: string
+                              sizeLimit:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  sizeLimit is the total amount of local storage required for this EmptyDir volume.
+                                  The size limit is also applicable for memory medium.
+                                  The maximum usage on memory medium EmptyDir would be the minimum value between
+                                  the SizeLimit specified here and the sum of memory limits of all containers in a pod.
+                                  The default is nil which means that the limit is undefined.
+                                  More info: https://kubernetes.io/docs/concepts/storage/volumes#emptydir
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                            type: object
+                          persistentVolumeClaim:
+                            description: |-
+                              PersistentVolumeClaimVolumeSource references the user's PVC in the same namespace.
+                              This volume finds the bound PV and mounts that volume for the pod. A
+                              PersistentVolumeClaimVolumeSource is, essentially, a wrapper around another
+                              type of volume that is owned by someone else (the system).
+                            properties:
+                              claimName:
+                                description: |-
+                                  claimName is the name of a PersistentVolumeClaim in the same namespace as the pod using this volume.
+                                  More info: https://kubernetes.io/docs/concepts/storage/persistent-volumes#persistentvolumeclaims
+                                type: string
+                              readOnly:
+                                description: |-
+                                  readOnly Will force the ReadOnly setting in VolumeMounts.
+                                  Default false.
+                                type: boolean
+                            required:
+                            - claimName
+                            type: object
+                        type: object
+                      enabled:
+                        default: true
+                        type: boolean
+                      extraIndexURL:
+                        description: |-
+                          ExtraIndexURL is appended to uv's index list. Useful for private PyPI
+                          mirrors. Empty by default.
+                        type: string
+                    type: object
+                type: object
               scheduling:
                 description: Scheduling targets the agent pod at specific nodes.
                 properties:
