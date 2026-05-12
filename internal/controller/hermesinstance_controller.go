@@ -21,70 +21,121 @@ import (
 	"fmt"
 	"time"
 
+	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
+	"github.com/stubbi/hermes-operator/internal/resources"
+
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
+
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
-	"github.com/stubbi/hermes-operator/internal/resources"
 )
 
 // HermesInstanceReconciler reconciles a HermesInstance.
 type HermesInstanceReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme   *runtime.Scheme
+	Recorder record.EventRecorder
+
+	// PrometheusOperatorCRDsPresent caches whether ServiceMonitor/PrometheusRule
+	// CRDs are installed. Probed once at startup by cmd/manager.
+	PrometheusOperatorCRDsPresent bool
 }
+
+const operatorLabelPrefix = "hermes.agent/"
 
 // +kubebuilder:rbac:groups=hermes.agent,resources=hermesinstances,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=hermes.agent,resources=hermesinstances/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=hermes.agent,resources=hermesinstances/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=services;configmaps;persistentvolumeclaims,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
-
-const operatorLabelPrefix = "hermes.agent/"
+// +kubebuilder:rbac:groups="",resources=services;configmaps;persistentvolumeclaims;secrets;serviceaccounts;events,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=networking.k8s.io,resources=networkpolicies;ingresses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=policy,resources=poddisruptionbudgets,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=autoscaling,resources=horizontalpodautoscalers,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=monitoring.coreos.com,resources=servicemonitors;prometheusrules,verbs=get;list;watch;create;update;patch;delete
 
 func (r *HermesInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-
-	var inst hermesv1.HermesInstance
-	if err := r.Get(ctx, req.NamespacedName, &inst); err != nil {
+	inst := &hermesv1.HermesInstance{}
+	if err := r.Get(ctx, req.NamespacedName, inst); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
 	}
 
-	if err := r.reconcilePVC(ctx, &inst); err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconcile PVC: %w", err)
+	steps := []struct {
+		name string
+		cond string
+		fn   func(context.Context, *hermesv1.HermesInstance) error
+	}{
+		{"Secret", hermesv1.ConditionTypeSecretsReady, r.reconcileSecret},
+		{"PVC", hermesv1.ConditionTypeStorageReady, r.reconcilePVC},
+		{"ConfigMap", hermesv1.ConditionTypeConfigReady, r.reconcileConfigMap},
+		{"WorkspaceConfigMap", hermesv1.ConditionTypeConfigReady, r.reconcileWorkspaceConfigMap},
+		{"NetworkPolicy", hermesv1.ConditionTypeNetworkPolicyReady, r.reconcileNetworkPolicy},
+		{"RBAC", hermesv1.ConditionTypeRBACReady, r.reconcileRBAC},
+		{"Service", hermesv1.ConditionTypeServiceReady, r.reconcileService},
+		{"PDB", hermesv1.ConditionTypePDBReady, r.reconcilePDB},
+		{"HPA", hermesv1.ConditionTypeHPAReady, r.reconcileHPA},
+		{"Ingress", hermesv1.ConditionTypeIngressReady, r.reconcileIngress},
+		{"ServiceMonitor", hermesv1.ConditionTypeServiceMonitorReady, r.reconcileServiceMonitor},
+		{"PrometheusRule", hermesv1.ConditionTypePrometheusRuleReady, r.reconcilePrometheusRule},
+		{"StatefulSet", "StatefulSetReady", r.reconcileStatefulSet},
 	}
-	if err := r.reconcileConfigMap(ctx, &inst); err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconcile ConfigMap: %w", err)
+	for _, s := range steps {
+		if err := s.fn(ctx, inst); err != nil {
+			r.setCondition(inst, s.cond, metav1.ConditionFalse, "Error", err.Error())
+			_ = r.Status().Update(ctx, inst)
+			logger.Error(err, "subsystem failed", "subsystem", s.name)
+			return ctrl.Result{}, fmt.Errorf("reconcile %s: %w", s.name, err)
+		}
+		r.setCondition(inst, s.cond, metav1.ConditionTrue, "Reconciled", s.name+" up to date")
 	}
-	if err := r.reconcileService(ctx, &inst); err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconcile Service: %w", err)
-	}
-	if err := r.reconcileStatefulSet(ctx, &inst); err != nil {
-		return ctrl.Result{}, fmt.Errorf("reconcile StatefulSet: %w", err)
-	}
-	if err := r.updateStatus(ctx, &inst); err != nil {
+
+	if err := r.updateStatus(ctx, inst); err != nil {
 		logger.Error(err, "status update failed")
 	}
 
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
+// --- per-subsystem reconcilers ---
+
+func (r *HermesInstanceReconciler) reconcileSecret(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	obj := &corev1.Secret{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.GatewayTokenSecretName(inst), Namespace: inst.Namespace,
+	}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildGatewayTokenSecret(inst)
+		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Annotations = resources.MergePreservingForeign(obj.Annotations, desired.Annotations, operatorLabelPrefix)
+		obj.Type = desired.Type
+		if obj.Data == nil {
+			obj.Data = desired.Data
+		}
+		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
+	})
+	return err
+}
+
 func (r *HermesInstanceReconciler) reconcilePVC(ctx context.Context, inst *hermesv1.HermesInstance) error {
 	pvc := &corev1.PersistentVolumeClaim{ObjectMeta: metav1.ObjectMeta{
-		Name:      resources.PVCName(inst),
-		Namespace: inst.Namespace,
+		Name: resources.PVCName(inst), Namespace: inst.Namespace,
 	}}
 	err := r.Get(ctx, types.NamespacedName{Name: pvc.Name, Namespace: pvc.Namespace}, pvc)
 	if apierrors.IsNotFound(err) {
@@ -98,12 +149,15 @@ func (r *HermesInstanceReconciler) reconcilePVC(ctx context.Context, inst *herme
 }
 
 func (r *HermesInstanceReconciler) reconcileConfigMap(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	body, err := r.resolveConfigBody(ctx, inst)
+	if err != nil {
+		return err
+	}
 	obj := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
-		Name:      resources.ConfigMapName(inst),
-		Namespace: inst.Namespace,
+		Name: resources.ConfigMapName(inst), Namespace: inst.Namespace,
 	}}
-	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
-		desired := resources.BuildConfigMap(inst, "")
+	_, err = controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildConfigMap(inst, body)
 		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
 		obj.Data = desired.Data
 		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
@@ -111,14 +165,106 @@ func (r *HermesInstanceReconciler) reconcileConfigMap(ctx context.Context, inst 
 	return err
 }
 
+func (r *HermesInstanceReconciler) resolveConfigBody(ctx context.Context, inst *hermesv1.HermesInstance) (string, error) {
+	cs := inst.Spec.Config
+	if cs.ConfigMapRef == nil {
+		return "", nil
+	}
+	user := &corev1.ConfigMap{}
+	if err := r.Get(ctx, types.NamespacedName{Name: cs.ConfigMapRef.Name, Namespace: inst.Namespace}, user); err != nil {
+		return "", fmt.Errorf("resolve configMapRef %q: %w", cs.ConfigMapRef.Name, err)
+	}
+	base := user.Data["config.yaml"]
+	if cs.Raw == nil {
+		return base, nil
+	}
+	if cs.MergeMode == hermesv1.ConfigMergeModeMerge {
+		return resources.MergeYAMLBodies(base, string(cs.Raw.Raw))
+	}
+	return "", nil
+}
+
+func (r *HermesInstanceReconciler) reconcileWorkspaceConfigMap(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	obj := &corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.WorkspaceConfigMapName(inst), Namespace: inst.Namespace,
+	}}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildWorkspaceConfigMap(inst)
+		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Data = desired.Data
+		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesInstanceReconciler) reconcileNetworkPolicy(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	enabled := resources.BoolValueOrDefault(inst.Spec.Security.NetworkPolicy.Enabled, true)
+	obj := &networkingv1.NetworkPolicy{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.NetworkPolicyName(inst), Namespace: inst.Namespace,
+	}}
+	if !enabled {
+		return r.deleteIfExists(ctx, obj)
+	}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildNetworkPolicy(inst)
+		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Spec = desired.Spec
+		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesInstanceReconciler) reconcileRBAC(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	create := resources.BoolValueOrDefault(inst.Spec.Security.RBAC.CreateServiceAccount, true)
+	if !create {
+		return nil
+	}
+	sa := &corev1.ServiceAccount{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.ServiceAccountName(inst), Namespace: inst.Namespace,
+	}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, sa, func() error {
+		desired := resources.BuildServiceAccount(inst)
+		sa.Labels = resources.MergePreservingForeign(sa.Labels, desired.Labels, operatorLabelPrefix)
+		sa.Annotations = resources.MergePreservingForeign(sa.Annotations, desired.Annotations, operatorLabelPrefix)
+		sa.AutomountServiceAccountToken = desired.AutomountServiceAccountToken
+		return controllerutil.SetControllerReference(inst, sa, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("sa: %w", err)
+	}
+	role := &rbacv1.Role{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.RoleName(inst), Namespace: inst.Namespace,
+	}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, role, func() error {
+		desired := resources.BuildRole(inst)
+		role.Labels = resources.MergePreservingForeign(role.Labels, desired.Labels, operatorLabelPrefix)
+		role.Rules = desired.Rules
+		return controllerutil.SetControllerReference(inst, role, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("role: %w", err)
+	}
+	rb := &rbacv1.RoleBinding{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.RoleBindingName(inst), Namespace: inst.Namespace,
+	}}
+	if _, err := controllerutil.CreateOrUpdate(ctx, r.Client, rb, func() error {
+		desired := resources.BuildRoleBinding(inst)
+		rb.Labels = resources.MergePreservingForeign(rb.Labels, desired.Labels, operatorLabelPrefix)
+		rb.Subjects = desired.Subjects
+		rb.RoleRef = desired.RoleRef
+		return controllerutil.SetControllerReference(inst, rb, r.Scheme)
+	}); err != nil {
+		return fmt.Errorf("rolebinding: %w", err)
+	}
+	return nil
+}
+
 func (r *HermesInstanceReconciler) reconcileService(ctx context.Context, inst *hermesv1.HermesInstance) error {
 	obj := &corev1.Service{ObjectMeta: metav1.ObjectMeta{
-		Name:      resources.ServiceName(inst),
-		Namespace: inst.Namespace,
+		Name: resources.ServiceName(inst), Namespace: inst.Namespace,
 	}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		desired := resources.BuildService(inst)
 		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Annotations = resources.MergePreservingForeign(obj.Annotations, desired.Annotations, operatorLabelPrefix)
 		clusterIP := obj.Spec.ClusterIP
 		clusterIPs := obj.Spec.ClusterIPs
 		obj.Spec = desired.Spec
@@ -131,10 +277,122 @@ func (r *HermesInstanceReconciler) reconcileService(ctx context.Context, inst *h
 	return err
 }
 
+func (r *HermesInstanceReconciler) reconcilePDB(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	enabled := resources.BoolValue(inst.Spec.Availability.PodDisruptionBudget.Enabled)
+	obj := &policyv1.PodDisruptionBudget{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.PDBName(inst), Namespace: inst.Namespace,
+	}}
+	if !enabled {
+		return r.deleteIfExists(ctx, obj)
+	}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildPDB(inst)
+		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Spec = desired.Spec
+		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesInstanceReconciler) reconcileHPA(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	obj := &autoscalingv2.HorizontalPodAutoscaler{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.HPAName(inst), Namespace: inst.Namespace,
+	}}
+	if !resources.IsHPAEnabled(inst) {
+		return r.deleteIfExists(ctx, obj)
+	}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildHPA(inst)
+		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Spec = desired.Spec
+		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesInstanceReconciler) reconcileIngress(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	enabled := resources.BoolValue(inst.Spec.Networking.Ingress.Enabled)
+	obj := &networkingv1.Ingress{ObjectMeta: metav1.ObjectMeta{
+		Name: resources.IngressName(inst), Namespace: inst.Namespace,
+	}}
+	if !enabled {
+		return r.deleteIfExists(ctx, obj)
+	}
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		desired := resources.BuildIngress(inst)
+		obj.Labels = resources.MergePreservingForeign(obj.Labels, desired.Labels, operatorLabelPrefix)
+		obj.Annotations = resources.MergePreservingForeign(obj.Annotations, desired.Annotations, operatorLabelPrefix)
+		obj.Spec = desired.Spec
+		return controllerutil.SetControllerReference(inst, obj, r.Scheme)
+	})
+	return err
+}
+
+func (r *HermesInstanceReconciler) reconcileServiceMonitor(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	// If the Prometheus Operator CRDs are not present there is nothing to manage —
+	// no ServiceMonitor can exist, so skip entirely (don't even try to delete).
+	if !r.PrometheusOperatorCRDsPresent {
+		return nil
+	}
+	enabled := resources.BoolValue(inst.Spec.Observability.ServiceMonitor.Enabled)
+	if !enabled {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(resources.ServiceMonitorGVK())
+		obj.SetName(resources.ServiceMonitorName(inst))
+		obj.SetNamespace(inst.Namespace)
+		return r.deleteIfExists(ctx, obj)
+	}
+	desired := resources.BuildServiceMonitor(inst)
+	if err := controllerutil.SetControllerReference(inst, desired, r.Scheme); err != nil {
+		return err
+	}
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(resources.ServiceMonitorGVK())
+	obj.SetName(desired.GetName())
+	obj.SetNamespace(desired.GetNamespace())
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		obj.Object["spec"] = desired.Object["spec"]
+		obj.SetLabels(resources.MergePreservingForeign(obj.GetLabels(), desired.GetLabels(), operatorLabelPrefix))
+		obj.SetOwnerReferences(desired.GetOwnerReferences())
+		return nil
+	})
+	return err
+}
+
+func (r *HermesInstanceReconciler) reconcilePrometheusRule(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	// If the Prometheus Operator CRDs are not present there is nothing to manage —
+	// no PrometheusRule can exist, so skip entirely (don't even try to delete).
+	if !r.PrometheusOperatorCRDsPresent {
+		return nil
+	}
+	enabled := resources.BoolValue(inst.Spec.Observability.PrometheusRule.Enabled)
+	if !enabled {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(resources.PrometheusRuleGVK())
+		obj.SetName(resources.PrometheusRuleName(inst))
+		obj.SetNamespace(inst.Namespace)
+		return r.deleteIfExists(ctx, obj)
+	}
+	desired := resources.BuildPrometheusRule(inst)
+	if err := controllerutil.SetControllerReference(inst, desired, r.Scheme); err != nil {
+		return err
+	}
+	obj := &unstructured.Unstructured{}
+	obj.SetGroupVersionKind(resources.PrometheusRuleGVK())
+	obj.SetName(desired.GetName())
+	obj.SetNamespace(desired.GetNamespace())
+	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
+		obj.Object["spec"] = desired.Object["spec"]
+		obj.SetLabels(resources.MergePreservingForeign(obj.GetLabels(), desired.GetLabels(), operatorLabelPrefix))
+		obj.SetOwnerReferences(desired.GetOwnerReferences())
+		return nil
+	})
+	return err
+}
+
 func (r *HermesInstanceReconciler) reconcileStatefulSet(ctx context.Context, inst *hermesv1.HermesInstance) error {
 	obj := &appsv1.StatefulSet{ObjectMeta: metav1.ObjectMeta{
-		Name:      resources.StatefulSetName(inst),
-		Namespace: inst.Namespace,
+		Name: resources.StatefulSetName(inst), Namespace: inst.Namespace,
 	}}
 	_, err := controllerutil.CreateOrUpdate(ctx, r.Client, obj, func() error {
 		desired := resources.BuildStatefulSet(inst)
@@ -145,25 +403,52 @@ func (r *HermesInstanceReconciler) reconcileStatefulSet(ctx context.Context, ins
 	return err
 }
 
+// --- helpers ---
+
+func (r *HermesInstanceReconciler) deleteIfExists(ctx context.Context, obj client.Object) error {
+	err := r.Get(ctx, client.ObjectKeyFromObject(obj), obj)
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return client.IgnoreNotFound(r.Delete(ctx, obj))
+}
+
+func (r *HermesInstanceReconciler) setCondition(inst *hermesv1.HermesInstance, t string, status metav1.ConditionStatus, reason, msg string) {
+	meta.SetStatusCondition(&inst.Status.Conditions, metav1.Condition{
+		Type:               t,
+		Status:             status,
+		Reason:             reason,
+		Message:            msg,
+		ObservedGeneration: inst.Generation,
+		LastTransitionTime: metav1.NewTime(time.Now()),
+	})
+}
+
 func (r *HermesInstanceReconciler) updateStatus(ctx context.Context, inst *hermesv1.HermesInstance) error {
 	sts := &appsv1.StatefulSet{}
 	if err := r.Get(ctx, types.NamespacedName{Name: resources.StatefulSetName(inst), Namespace: inst.Namespace}, sts); err != nil {
 		return err
 	}
-	ready := sts.Status.ReadyReplicas > 0 && sts.Status.ReadyReplicas == sts.Status.Replicas
-	phase := "Pending"
-	if ready {
-		phase = "Ready"
+	inst.Status.Replicas = sts.Status.Replicas
+	inst.Status.ReadyReplicas = sts.Status.ReadyReplicas
+	inst.Status.ObservedGeneration = inst.Generation
+	switch {
+	case inst.Spec.Suspended:
+		inst.Status.Phase = "Suspended"
+	case sts.Status.ReadyReplicas > 0 && sts.Status.ReadyReplicas == sts.Status.Replicas:
+		inst.Status.Phase = "Ready"
+		r.setCondition(inst, hermesv1.ConditionTypeReady, metav1.ConditionTrue, "AllSubsystemsReady", "")
+	default:
+		inst.Status.Phase = "Pending"
+		r.setCondition(inst, hermesv1.ConditionTypeReady, metav1.ConditionFalse, "StatefulSetNotReady", "")
 	}
-	if inst.Status.Phase != phase || inst.Status.ObservedGeneration != inst.Generation {
-		inst.Status.Phase = phase
-		inst.Status.ObservedGeneration = inst.Generation
-		return r.Status().Update(ctx, inst)
-	}
-	return nil
+	return r.Status().Update(ctx, inst)
 }
 
-// SetupWithManager wires watches.
+// SetupWithManager wires watches for every owned type.
 func (r *HermesInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&hermesv1.HermesInstance{}).
@@ -171,6 +456,14 @@ func (r *HermesInstanceReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Owns(&corev1.Service{}).
 		Owns(&corev1.ConfigMap{}).
 		Owns(&corev1.PersistentVolumeClaim{}).
+		Owns(&corev1.Secret{}).
+		Owns(&corev1.ServiceAccount{}).
+		Owns(&rbacv1.Role{}).
+		Owns(&rbacv1.RoleBinding{}).
+		Owns(&networkingv1.NetworkPolicy{}).
+		Owns(&networkingv1.Ingress{}).
+		Owns(&policyv1.PodDisruptionBudget{}).
+		Owns(&autoscalingv2.HorizontalPodAutoscaler{}).
 		Named("hermesinstance").
 		Complete(r)
 }
