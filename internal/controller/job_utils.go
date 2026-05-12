@@ -16,10 +16,8 @@ func FinalBackupJobName(inst *hermesv1.HermesInstance) string { return inst.Name
 func PreUpdateBackupJobName(inst *hermesv1.HermesInstance) string {
 	return inst.Name + "-backup-preupdate"
 }
-func RestoreJobName(inst *hermesv1.HermesInstance) string         { return inst.Name + "-restore" }
-func MigrationJobName(inst *hermesv1.HermesInstance) string       { return inst.Name + "-migrate" }
-func BackupCronJobName(inst *hermesv1.HermesInstance) string      { return inst.Name + "-backup-cron" }
-func BackupPruneCronJobName(inst *hermesv1.HermesInstance) string { return inst.Name + "-backup-prune" }
+func RestoreJobName(inst *hermesv1.HermesInstance) string   { return inst.Name + "-restore" }
+func MigrationJobName(inst *hermesv1.HermesInstance) string { return inst.Name + "-migrate" }
 
 // IsJobFinished reports whether the Job has a terminal condition.
 func IsJobFinished(job *batchv1.Job) (bool, batchv1.JobConditionType) {

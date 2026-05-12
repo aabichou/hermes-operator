@@ -9,6 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	hermesv1 "github.com/stubbi/hermes-operator/api/v1"
+	"github.com/stubbi/hermes-operator/internal/resources"
 )
 
 func TestJobNames(t *testing.T) {
@@ -16,8 +17,8 @@ func TestJobNames(t *testing.T) {
 	assert.Equal(t, "demo-backup-final", FinalBackupJobName(inst))
 	assert.Equal(t, "demo-backup-preupdate", PreUpdateBackupJobName(inst))
 	assert.Equal(t, "demo-restore", RestoreJobName(inst))
-	assert.Equal(t, "demo-backup-cron", BackupCronJobName(inst))
-	assert.Equal(t, "demo-backup-prune", BackupPruneCronJobName(inst))
+	assert.Equal(t, "demo-backup-cron", resources.BackupCronJobName(inst))
+	assert.Equal(t, "demo-backup-prune", resources.BackupPruneCronJobName(inst))
 }
 
 func TestIsJobFinished(t *testing.T) {

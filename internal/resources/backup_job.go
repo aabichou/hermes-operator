@@ -130,3 +130,10 @@ func resticRepo(s3 *hermesv1.BackupS3Spec) string {
 	}
 	return fmt.Sprintf("s3:%s/%s", s3.Endpoint, s3.Bucket)
 }
+
+func s3CredsSecretName(inst *hermesv1.HermesInstance) string {
+	if inst.Spec.Backup.S3 == nil {
+		return ""
+	}
+	return inst.Spec.Backup.S3.CredentialsSecretRef.Name
+}
