@@ -94,8 +94,9 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 
 	err = (&HermesInstanceReconciler{
-		Client: k8sManager.GetClient(),
-		Scheme: k8sManager.GetScheme(),
+		Client:                        k8sManager.GetClient(),
+		Scheme:                        k8sManager.GetScheme(),
+		PrometheusOperatorCRDsPresent: false,
 	}).SetupWithManager(k8sManager)
 	Expect(err).ToNot(HaveOccurred())
 
