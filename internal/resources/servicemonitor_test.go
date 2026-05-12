@@ -46,7 +46,7 @@ func TestBuildServiceMonitor_SecureSchemeMatchesMetricsSecure(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
 		Spec: hermesv1.HermesInstanceSpec{
 			Observability: hermesv1.ObservabilitySpec{
-				Metrics: hermesv1.MetricsSpec{Enabled: Ptr(true), Secure: Ptr(true)},
+				Metrics:        hermesv1.MetricsSpec{Enabled: Ptr(true), Secure: Ptr(true)},
 				ServiceMonitor: hermesv1.ServiceMonitorSpec{Enabled: Ptr(true)},
 			},
 		},

@@ -85,7 +85,7 @@ func TestBuildIngress_UserAnnotationsWin(t *testing.T) {
 					ClassName: Ptr("nginx"),
 					Annotations: map[string]string{
 						"nginx.ingress.kubernetes.io/ssl-redirect": "false",
-						"team":                                     "platform",
+						"team": "platform",
 					},
 					ServicePortName: "gateway",
 				},

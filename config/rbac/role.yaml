@@ -40,6 +40,25 @@ rules:
 - apiGroups:
   - hermes.agent
   resources:
+  - hermesclusterdefaults
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - hermes.agent
+  resources:
+  - hermesclusterdefaults/status
+  - hermesinstances/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - hermes.agent
+  resources:
   - hermesinstances
   verbs:
   - create
@@ -54,12 +73,4 @@ rules:
   resources:
   - hermesinstances/finalizers
   verbs:
-  - update
-- apiGroups:
-  - hermes.agent
-  resources:
-  - hermesinstances/status
-  verbs:
-  - get
-  - patch
   - update
