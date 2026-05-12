@@ -17,8 +17,10 @@ limitations under the License.
 package v1
 
 import (
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	intstr "k8s.io/apimachinery/pkg/util/intstr"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
@@ -613,14 +615,93 @@ type LoggingSpec struct {
 	Level string `json:"level,omitempty"`
 }
 
-// AvailabilitySpec — populated in Task 9.
-type AvailabilitySpec struct{}
+// AvailabilitySpec bundles PDB, HPA, and topology-spread.
+type AvailabilitySpec struct {
+	// +optional
+	PodDisruptionBudget PDBSpec `json:"podDisruptionBudget,omitempty"`
 
-// ProbesSpec — populated in Task 9.
-type ProbesSpec struct{}
+	// +optional
+	HorizontalPodAutoscaler HPASpec `json:"horizontalPodAutoscaler,omitempty"`
 
-// SchedulingSpec — populated in Task 9.
-type SchedulingSpec struct{}
+	// +optional
+	TopologySpreadConstraints []corev1.TopologySpreadConstraint `json:"topologySpreadConstraints,omitempty"`
+}
+
+// PDBSpec controls PodDisruptionBudget emission.
+type PDBSpec struct {
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// MinAvailable — optional, mutually exclusive with MaxUnavailable.
+	// +optional
+	MinAvailable *intstr.IntOrString `json:"minAvailable,omitempty"`
+
+	// MaxUnavailable — optional, mutually exclusive with MinAvailable.
+	// Default 1 when neither is set and PDB is enabled.
+	// +optional
+	MaxUnavailable *intstr.IntOrString `json:"maxUnavailable,omitempty"`
+}
+
+// HPASpec controls HorizontalPodAutoscaler emission.
+type HPASpec struct {
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// MinReplicas — default 1.
+	// +kubebuilder:default=1
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MinReplicas *int32 `json:"minReplicas,omitempty"`
+
+	// MaxReplicas — default 5.
+	// +kubebuilder:default=5
+	// +kubebuilder:validation:Minimum=1
+	// +optional
+	MaxReplicas *int32 `json:"maxReplicas,omitempty"`
+
+	// TargetCPUUtilization — default 80 (percent).
+	// +kubebuilder:default=80
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	TargetCPUUtilization *int32 `json:"targetCPUUtilization,omitempty"`
+
+	// TargetMemoryUtilization — optional, when set adds a memory metric.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=100
+	// +optional
+	TargetMemoryUtilization *int32 `json:"targetMemoryUtilization,omitempty"`
+
+	// Behavior is forwarded onto HPA's autoscaling/v2 behavior field.
+	// Plan 6 conformance suite asserts the field is exposed; v1 forwards it raw.
+	// +optional
+	Behavior *autoscalingv2.HorizontalPodAutoscalerBehavior `json:"behavior,omitempty"`
+}
+
+// ProbesSpec overrides the operator's built-in probes. Each field is a complete
+// probe — set every value you want non-default because we apply it verbatim.
+type ProbesSpec struct {
+	// +optional
+	Liveness *corev1.Probe `json:"liveness,omitempty"`
+	// +optional
+	Readiness *corev1.Probe `json:"readiness,omitempty"`
+	// +optional
+	Startup *corev1.Probe `json:"startup,omitempty"`
+}
+
+// SchedulingSpec targets the agent pod at specific nodes.
+type SchedulingSpec struct {
+	// +optional
+	NodeSelector map[string]string `json:"nodeSelector,omitempty"`
+	// +optional
+	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// +optional
+	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+	// +optional
+	PriorityClassName string `json:"priorityClassName,omitempty"`
+}
 
 // InstanceSkill — Plan 3 fills the runtime semantics. The field exists here so
 // SSA from HermesSelfConfig (Plan 4) can patch the slice with listMapKey=source.
@@ -630,8 +711,27 @@ type InstanceSkill struct {
 	Source string `json:"source"`
 }
 
-// SelfConfigureSpec — populated in Task 9.
-type SelfConfigureSpec struct{}
+// SelfConfigureSpec is the allowlist policy for HermesSelfConfig mutations.
+// Plan 4 wires the controller; the field exists here so Plan 4 doesn't need a
+// CRD change. The validator rejects Enabled=true with ProtectedKeys empty.
+type SelfConfigureSpec struct {
+	// Enabled — explicit *bool so the defaulter can distinguish "user said false"
+	// from "user did not set it" (Plan 4 relies on this).
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// AllowedActions is the set of permitted action categories Plan 4 will
+	// enforce: skills, config, envVars, workspaceFiles, profiles.
+	// +listType=set
+	// +optional
+	AllowedActions []string `json:"allowedActions,omitempty"`
+
+	// ProtectedKeys is the list of glob expressions over JSON paths that may
+	// not be mutated by HermesSelfConfig. Required (non-empty) when Enabled=true.
+	// +listType=set
+	// +optional
+	ProtectedKeys []string `json:"protectedKeys,omitempty"`
+}
 
 // HermesInstanceStatus reflects the observed state of HermesInstance.
 type HermesInstanceStatus struct {
@@ -639,16 +739,43 @@ type HermesInstanceStatus struct {
 	// +optional
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 
-	// Phase is a short human-readable status (Pending|Ready|Degraded).
+	// Phase is a short human-readable status (Pending | Ready | Degraded | Suspended).
 	// +optional
 	Phase string `json:"phase,omitempty"`
 
-	// Conditions represent the latest available observations of the instance's state.
+	// Conditions reflect subsystem readiness. Plan 2 emits:
+	//   StorageReady, ConfigReady, SecretsReady, NetworkPolicyReady, RBACReady,
+	//   ServiceReady, PDBReady, HPAReady, IngressReady, ServiceMonitorReady,
+	//   PrometheusRuleReady, WebhookReady (manager-level), Ready (overall).
 	// +listType=map
 	// +listMapKey=type
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// Replicas is the latest observed StatefulSet replica count.
+	// +optional
+	Replicas int32 `json:"replicas,omitempty"`
+
+	// ReadyReplicas is the latest observed ready-replica count.
+	// +optional
+	ReadyReplicas int32 `json:"readyReplicas,omitempty"`
 }
+
+// Condition type constants. Centralised so Plan 4-6 and docs/conditions.md stay aligned.
+const (
+	ConditionTypeReady               = "Ready"
+	ConditionTypeStorageReady        = "StorageReady"
+	ConditionTypeConfigReady         = "ConfigReady"
+	ConditionTypeSecretsReady        = "SecretsReady"
+	ConditionTypeNetworkPolicyReady  = "NetworkPolicyReady"
+	ConditionTypeRBACReady           = "RBACReady"
+	ConditionTypeServiceReady        = "ServiceReady"
+	ConditionTypePDBReady            = "PDBReady"
+	ConditionTypeHPAReady            = "HPAReady"
+	ConditionTypeIngressReady        = "IngressReady"
+	ConditionTypeServiceMonitorReady = "ServiceMonitorReady"
+	ConditionTypePrometheusRuleReady = "PrometheusRuleReady"
+)
 
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status

@@ -7,6 +7,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	intstr "k8s.io/apimachinery/pkg/util/intstr"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 )
 
@@ -148,4 +150,54 @@ func TestObservabilitySpec_Shape(t *testing.T) {
 	assert.True(t, *o.Metrics.Enabled)
 	assert.Equal(t, int32(9090), o.Metrics.Port)
 	assert.Equal(t, LogFormatJSON, o.Logging.Format)
+}
+
+func TestAvailabilitySpec_Shape(t *testing.T) {
+	t.Parallel()
+	min := intstr.FromString("50%")
+	max := intstr.FromInt(1)
+	a := AvailabilitySpec{
+		PodDisruptionBudget: PDBSpec{Enabled: Ptr(true), MinAvailable: &min, MaxUnavailable: &max},
+		HorizontalPodAutoscaler: HPASpec{Enabled: Ptr(true), MinReplicas: Ptr(int32(2)), MaxReplicas: Ptr(int32(5)),
+			TargetCPUUtilization: Ptr(int32(70))},
+		TopologySpreadConstraints: []corev1.TopologySpreadConstraint{
+			{TopologyKey: "topology.kubernetes.io/zone", WhenUnsatisfiable: corev1.ScheduleAnyway, MaxSkew: 1,
+				LabelSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "x"}}},
+		},
+	}
+	assert.True(t, *a.PodDisruptionBudget.Enabled)
+	assert.Equal(t, "50%", a.PodDisruptionBudget.MinAvailable.StrVal)
+	assert.Equal(t, int32(70), *a.HorizontalPodAutoscaler.TargetCPUUtilization)
+}
+
+func TestProbesSpec_Overrides(t *testing.T) {
+	t.Parallel()
+	p := ProbesSpec{
+		Liveness:  &corev1.Probe{InitialDelaySeconds: 10},
+		Readiness: &corev1.Probe{InitialDelaySeconds: 5},
+		Startup:   &corev1.Probe{InitialDelaySeconds: 0, PeriodSeconds: 2, FailureThreshold: 30},
+	}
+	assert.Equal(t, int32(10), p.Liveness.InitialDelaySeconds)
+}
+
+func TestSchedulingSpec_Shape(t *testing.T) {
+	t.Parallel()
+	s := SchedulingSpec{
+		NodeSelector:      map[string]string{"disktype": "ssd"},
+		Tolerations:       []corev1.Toleration{{Key: "gpu", Operator: corev1.TolerationOpExists}},
+		PriorityClassName: "high-prio",
+	}
+	assert.Equal(t, "ssd", s.NodeSelector["disktype"])
+	assert.Equal(t, "high-prio", s.PriorityClassName)
+}
+
+func TestSelfConfigureSpec_AllowList(t *testing.T) {
+	t.Parallel()
+	sc := SelfConfigureSpec{
+		Enabled:        Ptr(true),
+		AllowedActions: []string{"skills", "envVars"},
+		ProtectedKeys:  []string{"spec.image.repository"},
+	}
+	assert.True(t, *sc.Enabled)
+	assert.Len(t, sc.AllowedActions, 2)
 }
