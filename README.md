@@ -28,7 +28,10 @@ Kubernetes operator for [nousresearch/hermes-agent](https://github.com/nousresea
 | Multi-platform gateways (Telegram, Discord, Slack, WhatsApp, Signal) | ✅ v1.0 | Plan 3 |
 | Honcho profile store (sibling Deployment+Service+PVC+NP, env-injected) | ✅ v1.0 | Plan 3 |
 | Self-configure | Agent-driven mutations via `HermesSelfConfig`. Server-Side Apply with field manager `hermes.agent/selfconfig` lets FluxCD/Argo co-own the instance. Allowlisted action categories: `skills`, `config`, `envVars`, `workspaceFiles`, `profiles`. Protected paths matched by glob. | ✅ v1.0 | Plan 4 |
-| Backup / restore / autoupdate / migration | ⏳ pending | Plan 5 |
+| S3-compatible backups (scheduled, on-delete, pre-update) | ✅ v1.0 | Plan 5 |
+| Declarative one-shot restore (`spec.restoreFrom`) | ✅ v1.0 | Plan 5 |
+| OCI-registry auto-update with rollback | ✅ v1.0 | Plan 5 |
+| OpenClaw → Hermes one-shot migration | ✅ v1.0 | Plan 5 |
 | OLM bundle + GoReleaser + conformance suite | ⏳ pending | Plan 6 |
 
 ## Quick start
@@ -53,6 +56,15 @@ EOF
 
 kubectl get hi
 ```
+
+## Day-2 Operations
+
+- [Backup & Restore](docs/backup-restore.md)
+- [Auto-Update](docs/autoupdate.md)
+- [OpenClaw → Hermes Migration](docs/migration.md)
+- [Snapshot Format Reference](docs/backup-format.md)
+
+The operator implements three trigger paths for backup (scheduled, on-delete, pre-update), declarative one-shot restore with terminal immutability, OCI-registry auto-update with semver channels and probe-failure rollback, and a one-shot OpenClaw → Hermes migration init container with both in-cluster-ref and S3-backup source modes.
 
 ## Design
 
