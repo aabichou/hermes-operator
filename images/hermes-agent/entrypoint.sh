@@ -22,14 +22,25 @@ fi
 # directly we set HERMES_HOME to its parent dir.
 export HERMES_HOME="$(dirname "${HERMES_CONFIG}")"
 
-# When invoked without a subcommand (k8s CMD = "serve"), run the messaging
-# gateway in foreground — that's the long-running service the operator's
-# StatefulSet exposes on port 8443.
+# When invoked without a subcommand (k8s CMD = "serve"), run the web
+# dashboard in foreground, bound to the StatefulSet's port 8443. This is
+# the long-running HTTP service the operator's IngressRoute targets and
+# what the readiness probe (tcpSocket: gateway) checks. The dashboard is
+# always-on regardless of which messaging platforms are configured.
+#
+# `--insecure` opts out of the OAuth gate for trusted-LAN / behind-proxy
+# deployments. Front it with a TLS-terminating IngressRoute and an
+# external auth layer if you need stronger guarantees.
 if [[ "${1:-serve}" == "serve" ]]; then
     shift || true
-    exec hermes gateway "$@"
+    exec hermes dashboard \
+        --host "${HERMES_DASHBOARD_HOST:-0.0.0.0}" \
+        --port "${HERMES_DASHBOARD_PORT:-8443}" \
+        --no-open \
+        --insecure \
+        "$@"
 fi
 
-# Pass through to `hermes` for other subcommands (migrate, version, etc.).
+# Pass through to `hermes` for other subcommands (migrate, gateway, version, etc.).
 # `hermes-agent` (the standalone demo runner) is intentionally not used here.
 exec hermes "$@"
