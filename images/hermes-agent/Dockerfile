@@ -58,8 +58,39 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv venv /opt/venv; \
     uv sync --frozen --no-dev
 
+# ---------- Stage 1b: web-builder ----------
+# Upstream's wheel ships `hermes_cli/web_dist/**` via package-data, but the
+# directory only exists after `cd web && npm run build` runs against the
+# source tree. uv installs hermes-agent from a git ref (not editable),
+# which fetches the source but never executes the JS build, so web_dist/
+# is empty in site-packages and `hermes dashboard` serves
+# `{"error":"Frontend not built"}` on every route.
+#
+# Mirror upstream's Dockerfile: clone the same fork ref pinned in
+# pyproject.toml, run the production vite build, then copy the resulting
+# web_dist/ into the runtime venv below.
+ARG HERMES_AGENT_FORK_REPO=https://github.com/aabichou/hermes-agent-src.git
+ARG HERMES_AGENT_FORK_REF=fix/packages-find-hermes-cli-subpackages
+FROM node:22-bookworm-slim AS web-builder
+ARG HERMES_AGENT_FORK_REPO
+ARG HERMES_AGENT_FORK_REF
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch "${HERMES_AGENT_FORK_REF}" "${HERMES_AGENT_FORK_REPO}" hermes-agent
+WORKDIR /src/hermes-agent/web
+RUN npm ci --no-audit --no-fund
+RUN npm run build
+# vite's outDir is "../hermes_cli/web_dist", so the assets land at
+# /src/hermes-agent/hermes_cli/web_dist/. Confirm the index exists so a
+# silent build failure fails this stage instead of producing an image
+# that still 404s.
+RUN test -f /src/hermes-agent/hermes_cli/web_dist/index.html
+
 # ---------- Stage 2: runtime ----------
 FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
+ARG PYTHON_VERSION
 ARG TINI_VERSION
 ARG HERMES_VERSION
 ARG TARGETARCH
@@ -87,6 +118,17 @@ RUN groupadd --system --gid 1000 hermes \
 
 # Copy the resolved venv from the builder stage.
 COPY --from=builder --chown=hermes:hermes /opt/venv /opt/venv
+
+# Drop the pre-built web frontend into the installed hermes_cli package.
+# uv installed hermes_cli without web_dist/ (the JS build never ran during
+# the wheel build); without these assets `hermes dashboard` returns
+# {"error":"Frontend not built"} on every page. The web-builder stage
+# above produces /src/hermes-agent/hermes_cli/web_dist/ from the same
+# fork ref that uv resolves, so the assets are commit-aligned with the
+# Python package.
+COPY --from=web-builder --chown=hermes:hermes \
+    /src/hermes-agent/hermes_cli/web_dist \
+    /opt/venv/lib/python${PYTHON_VERSION}/site-packages/hermes_cli/web_dist
 
 # Copy uv binary so the operator's init-uv container can run `uv sync --frozen`.
 COPY --from=builder /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/
