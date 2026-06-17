@@ -343,7 +343,7 @@ wheels = [
 [[package]]
 name = "hermes-agent"
 version = "0.15.2"
-source = { git = "https://github.com/NousResearch/hermes-agent?rev=v2026.5.29.2#77a1650c78a4cb1813d8a81fa1da40a15b6a3ec5" }
+source = { git = "https://github.com/aabichou/hermes-agent-src?rev=fix%2Fpackages-find-hermes-cli-subpackages#6ebbe505da4a935bc0a34e5de40a278d8325f948" }
 dependencies = [
     { name = "croniter" },
     { name = "fire" },
@@ -378,7 +378,7 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "hermes-agent", extras = ["web"], git = "https://github.com/NousResearch/hermes-agent?rev=v2026.5.29.2" }]
+requires-dist = [{ name = "hermes-agent", extras = ["web"], git = "https://github.com/aabichou/hermes-agent-src?rev=fix%2Fpackages-find-hermes-cli-subpackages" }]
 
 [[package]]
 name = "httpcore"
