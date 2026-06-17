@@ -17,11 +17,19 @@ if [[ ! -r "${HERMES_CONFIG}" ]]; then
     exit 78  # EX_CONFIG, matches sysexits.h
 fi
 
-# When invoked without a subcommand (k8s CMD = "serve"), use the default `run` form.
+# Point hermes at the operator-mounted config. The `hermes` CLI uses
+# $HERMES_HOME to discover ~/.hermes/config.yaml; since we mount the file
+# directly we set HERMES_HOME to its parent dir.
+export HERMES_HOME="$(dirname "${HERMES_CONFIG}")"
+
+# When invoked without a subcommand (k8s CMD = "serve"), run the messaging
+# gateway in foreground — that's the long-running service the operator's
+# StatefulSet exposes on port 8443.
 if [[ "${1:-serve}" == "serve" ]]; then
     shift || true
-    exec hermes-agent run --config "${HERMES_CONFIG}" "$@"
+    exec hermes gateway "$@"
 fi
 
-# Otherwise pass through verbatim: supports `migrate from-openclaw ...`, `version`, etc.
-exec hermes-agent "$@"
+# Pass through to `hermes` for other subcommands (migrate, version, etc.).
+# `hermes-agent` (the standalone demo runner) is intentionally not used here.
+exec hermes "$@"
