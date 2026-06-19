@@ -24,15 +24,26 @@ export HERMES_HOME="$(dirname "${HERMES_CONFIG}")"
 
 # ── Credential bundle projection ──────────────────────────────────────
 # When the HermesInstance includes a Secret mounted at /etc/hermes/creds/
-# (via spec.extraVolumes), copy its entries into the hermes user's HOME
-# with the modes that OpenSSH and git's `store` credential helper require
+# (via spec.extraVolumes), copy its entries into a HOME the agent owns
+# with the modes OpenSSH and git's `store` credential helper require
 # (0600 on private material, 0644 on public/config).
 #
-# The Secret volume is projected read-only with defaultMode 0440 and
-# fsGroup 1000 (operator default), so we can read it as the unprivileged
-# hermes user but cannot make the source files satisfy ssh's
-# directory-mode check (~/.ssh must not be group/world-writable, and
-# the parent of the private key must be hermes-owned). Hence the copy.
+# Where things land:
+#   The operator's StatefulSet runs us with readOnlyRootFilesystem=true,
+#   so the image-time HOME (/home/hermes) is NOT writable. The only
+#   per-instance writable mount is $HERMES_HOME (the PVC at
+#   /home/hermes/.hermes). We install the credential files there and
+#   re-export HOME=$HERMES_HOME so ssh/git/gh/anything else that
+#   respects HOME finds them at $HOME/.ssh, $HOME/.gitconfig,
+#   $HOME/.git-credentials with no per-call -i / -F / GIT_CONFIG_GLOBAL
+#   gymnastics. The hermes CLI itself uses HERMES_HOME explicitly, so
+#   the HOME change does not affect config.yaml discovery.
+#
+# Read access:
+#   The Secret volume is projected with defaultMode 0440 + operator
+#   fsGroup=1000, so the unprivileged hermes user (gid 1000) can read
+#   the source. The directory-mode constraints ssh applies to its own
+#   identity files are why we copy rather than symlink.
 #
 # Idempotent: re-runs on every container start, overwriting in place.
 # Rotation: requires a pod restart to take effect (the projected files
@@ -41,16 +52,20 @@ export HERMES_HOME="$(dirname "${HERMES_CONFIG}")"
 # skill bodies tell it to escalate on auth errors rather than improvise.
 CREDS_DIR="${HERMES_CREDS_DIR:-/etc/hermes/creds}"
 if [[ -d "${CREDS_DIR}" ]]; then
-    install -d -m 700 "${HOME}/.ssh"
+    install -d -m 700 "${HERMES_HOME}/.ssh"
     _copy_cred() {
         local src=$1 dst=$2 mode=$3
         [[ -f "$src" ]] || return 0
         install -m "$mode" "$src" "$dst"
     }
-    _copy_cred "${CREDS_DIR}/ssh-private-key"  "${HOME}/.ssh/id_ed25519"   600
-    _copy_cred "${CREDS_DIR}/ssh-known-hosts"  "${HOME}/.ssh/known_hosts"  644
-    _copy_cred "${CREDS_DIR}/gitconfig"        "${HOME}/.gitconfig"        644
-    _copy_cred "${CREDS_DIR}/git-credentials"  "${HOME}/.git-credentials"  600
+    _copy_cred "${CREDS_DIR}/ssh-private-key"  "${HERMES_HOME}/.ssh/id_ed25519"   600
+    _copy_cred "${CREDS_DIR}/ssh-known-hosts"  "${HERMES_HOME}/.ssh/known_hosts"  644
+    _copy_cred "${CREDS_DIR}/gitconfig"        "${HERMES_HOME}/.gitconfig"        644
+    _copy_cred "${CREDS_DIR}/git-credentials"  "${HERMES_HOME}/.git-credentials"  600
+
+    # Re-point HOME at the writable PVC so vanilla `ssh user@host` and
+    # `git push` resolve the credentials without per-call flags.
+    export HOME="${HERMES_HOME}"
 fi
 
 # When invoked without a subcommand (k8s CMD = "serve"), run the web
