@@ -111,9 +111,20 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Non-root user matching the StatefulSet's runAsUser=1000 (Plan 1).
+# The hermes user's HOME is set to /home/hermes/.hermes — the same path
+# the operator mounts the per-instance PVC at. Two reasons:
+#   1. The container runs with readOnlyRootFilesystem=true, so the
+#      classic /home/hermes is not writable. ssh/git/gh tools insist
+#      on writing to ~/.ssh / ~/.gitconfig / ~/.git-credentials —
+#      pointing HOME at the PVC gives them a writable target.
+#   2. OpenSSH resolves "~" via getpwuid(), NOT $HOME, so it is not
+#      enough to export HOME at runtime: the user's passwd entry must
+#      reflect the writable path too. This is why --home-dir is set
+#      here (and ENV HOME below is kept in sync).
 RUN groupadd --system --gid 1000 hermes \
-    && useradd --system --uid 1000 --gid 1000 --create-home --shell /usr/sbin/nologin hermes \
-    && mkdir -p /home/hermes/.hermes \
+    && useradd --system --uid 1000 --gid 1000 --create-home \
+                --home-dir /home/hermes/.hermes \
+                --shell /usr/sbin/nologin hermes \
     && chown -R hermes:hermes /home/hermes
 
 # Copy the resolved venv from the builder stage.
@@ -141,7 +152,7 @@ COPY --from=builder --chown=hermes:hermes /build/pyproject.toml /build/uv.lock /
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
-    HOME=/home/hermes
+    HOME=/home/hermes/.hermes
 
 # Image metadata. The HERMES_VERSION label is the one the operator's autoupdate
 # controller (Plan 5) compares against the registry tag.
@@ -153,7 +164,7 @@ LABEL org.opencontainers.image.title="hermes-agent" \
       hermes.agent/version="${HERMES_VERSION}"
 
 USER hermes
-WORKDIR /home/hermes
+WORKDIR /home/hermes/.hermes
 
 COPY --chown=hermes:hermes entrypoint.sh /usr/local/bin/hermes-entrypoint
 RUN chmod +x /usr/local/bin/hermes-entrypoint
