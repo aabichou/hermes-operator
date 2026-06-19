@@ -87,13 +87,17 @@ if [[ -d "${SEED_DIR}" ]]; then
             __hermes_initial_dirs__)
                 while IFS= read -r d; do
                     [[ -z "$d" ]] && continue
-                    install -d -m 755 "${HOME}/${d}"
+                    mkdir -p "${HOME}/${d}"
                 done < "$src"
                 ;;
             *)
                 rel=${name//__//}
                 dst="${HOME}/${rel}"
-                install -d -m 755 "$(dirname "$dst")"
+                # mkdir -p, NOT install -d -m: install would attempt to
+                # chmod the parent (e.g. HOME, which is a PVC mount the
+                # container doesn't own at the inode level — fsGroup
+                # only grants traversal/write, not chmod).
+                mkdir -p "$(dirname "$dst")"
                 install -m 644 "$src" "$dst"
                 ;;
         esac
