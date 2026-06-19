@@ -59,6 +59,47 @@ if [[ -d "${CREDS_DIR}" ]]; then
     _copy_cred "${CREDS_DIR}/git-credentials"  "${HOME}/.git-credentials"  600
 fi
 
+# ── Workspace seed projection ─────────────────────────────────────────
+# spec.workspace.initialFiles entries are projected by the operator as a
+# ConfigMap mounted at /home/hermes/.hermes-workspace-seed/. Keys use
+# "__" as a path separator (e.g. "skills__overview.md" → "skills/overview.md")
+# per the operator's EncodeWorkspacePath. There is no operator-side
+# runtime-init container to decode these into HOME (the schema's
+# "Plan 3 runtime-init container" was never built), so we do it here.
+#
+# Behavior:
+#   - "..*" entries (k8s projected-volume internals) are skipped.
+#   - The reserved "__hermes_initial_dirs__" key is a newline-separated
+#     list of directories to mkdir -p under HOME.
+#   - Every other key decodes "__" → "/" and lands at $HOME/<decoded>.
+#   - Re-runs are idempotent and overwrite in place: the manifest is
+#     the source of truth, not whatever happens to be on the PVC.
+SEED_DIR="${HERMES_WORKSPACE_SEED_DIR:-/home/hermes/.hermes-workspace-seed}"
+if [[ -d "${SEED_DIR}" ]]; then
+    # The k8s projected-volume layout exposes a "..data" symlink and a
+    # "..<timestamp>" dir alongside the real entries. We iterate via
+    # find -maxdepth 1 since glob "*" does match symlinks but not
+    # dotfiles, which is exactly what we want.
+    while IFS= read -r -d '' src; do
+        name=$(basename "$src")
+        case "$name" in
+            ..*) continue ;;
+            __hermes_initial_dirs__)
+                while IFS= read -r d; do
+                    [[ -z "$d" ]] && continue
+                    install -d -m 755 "${HOME}/${d}"
+                done < "$src"
+                ;;
+            *)
+                rel=${name//__//}
+                dst="${HOME}/${rel}"
+                install -d -m 755 "$(dirname "$dst")"
+                install -m 644 "$src" "$dst"
+                ;;
+        esac
+    done < <(find "${SEED_DIR}" -mindepth 1 -maxdepth 1 -print0)
+fi
+
 # When invoked without a subcommand (k8s CMD = "serve"), run the web
 # dashboard in foreground, bound to the StatefulSet's port 8443. This is
 # the long-running HTTP service the operator's IngressRoute targets and
