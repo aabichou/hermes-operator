@@ -22,6 +22,37 @@ fi
 # directly we set HERMES_HOME to its parent dir.
 export HERMES_HOME="$(dirname "${HERMES_CONFIG}")"
 
+# ── Credential bundle projection ──────────────────────────────────────
+# When the HermesInstance includes a Secret mounted at /etc/hermes/creds/
+# (via spec.extraVolumes), copy its entries into the hermes user's HOME
+# with the modes that OpenSSH and git's `store` credential helper require
+# (0600 on private material, 0644 on public/config).
+#
+# The Secret volume is projected read-only with defaultMode 0440 and
+# fsGroup 1000 (operator default), so we can read it as the unprivileged
+# hermes user but cannot make the source files satisfy ssh's
+# directory-mode check (~/.ssh must not be group/world-writable, and
+# the parent of the private key must be hermes-owned). Hence the copy.
+#
+# Idempotent: re-runs on every container start, overwriting in place.
+# Rotation: requires a pod restart to take effect (the projected files
+# refresh, but the copies in HOME don't until this hook runs again).
+# Tolerant of missing keys: a partial bundle is allowed; the agent's
+# skill bodies tell it to escalate on auth errors rather than improvise.
+CREDS_DIR="${HERMES_CREDS_DIR:-/etc/hermes/creds}"
+if [[ -d "${CREDS_DIR}" ]]; then
+    install -d -m 700 "${HOME}/.ssh"
+    _copy_cred() {
+        local src=$1 dst=$2 mode=$3
+        [[ -f "$src" ]] || return 0
+        install -m "$mode" "$src" "$dst"
+    }
+    _copy_cred "${CREDS_DIR}/ssh-private-key"  "${HOME}/.ssh/id_ed25519"   600
+    _copy_cred "${CREDS_DIR}/ssh-known-hosts"  "${HOME}/.ssh/known_hosts"  644
+    _copy_cred "${CREDS_DIR}/gitconfig"        "${HOME}/.gitconfig"        644
+    _copy_cred "${CREDS_DIR}/git-credentials"  "${HOME}/.git-credentials"  600
+fi
+
 # When invoked without a subcommand (k8s CMD = "serve"), run the web
 # dashboard in foreground, bound to the StatefulSet's port 8443. This is
 # the long-running HTTP service the operator's IngressRoute targets and
