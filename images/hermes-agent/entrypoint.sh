@@ -115,6 +115,35 @@ fi
 # external auth layer if you need stronger guarantees.
 if [[ "${1:-serve}" == "serve" ]]; then
     shift || true
+
+    # ── Messaging gateway (optional, background) ──────────────────────
+    # `hermes dashboard` alone runs only the web UI — it does NOT start
+    # the messaging gateway (Discord / Telegram / Slack / Signal). In
+    # the upstream hermes-agent image those are separate s6-supervised
+    # services; this operator image is s6-less, so we spawn the gateway
+    # ourselves when at least one platform token is present in env.
+    #
+    # The operator only sets DISCORD_BOT_TOKEN / TELEGRAM_BOT_TOKEN /
+    # SLACK_BOT_TOKEN / SIGNAL_AUTH_TOKEN when the matching
+    # spec.gateways.<platform>.enabled is true and a botTokenSecretRef
+    # resolves — so the presence of any of these is a reliable signal
+    # that the gateway should run.
+    #
+    # Background semantics: gateway runs detached, logs to a tmp file
+    # tailable via `kubectl exec`. If it crashes, the dashboard stays
+    # up (the pod's readiness depends on the dashboard, not on the
+    # gateway). If the dashboard exits, kubelet kills the whole
+    # container — the orphaned gateway dies with it.
+    if [[ -n "${DISCORD_BOT_TOKEN:-}"   || \
+          -n "${TELEGRAM_BOT_TOKEN:-}"  || \
+          -n "${SLACK_BOT_TOKEN:-}"     || \
+          -n "${SIGNAL_AUTH_TOKEN:-}" ]]; then
+        echo "hermes-entrypoint: spawning messaging gateway (logs at /tmp/hermes-gateway.log)" >&2
+        nohup hermes gateway run > /tmp/hermes-gateway.log 2>&1 &
+    else
+        echo "hermes-entrypoint: no messaging gateway enabled (no *_BOT_TOKEN env)" >&2
+    fi
+
     exec hermes dashboard \
         --host "${HERMES_DASHBOARD_HOST:-0.0.0.0}" \
         --port "${HERMES_DASHBOARD_PORT:-8443}" \
