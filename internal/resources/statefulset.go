@@ -149,6 +149,7 @@ func BuildStatefulSet(inst *hermesv1.HermesInstance, extraInits []corev1.Contain
 	// --- Plan 3: runtime/gateways/honcho wiring (operator-managed env) ---
 	c.Env = append(c.Env, BuildGatewayEnv(inst)...)
 	c.Env = append(c.Env, BuildHonchoConsumerEnv(inst)...)
+	c.Env = append(c.Env, BuildSemaphoreEnv(inst)...)
 	c.EnvFrom = append(c.EnvFrom, BuildGatewayEnvFrom(inst)...)
 	c.VolumeMounts = append(c.VolumeMounts, BuildRuntimeVolumeMounts(inst)...)
 	// --- end Plan 3 operator env ---

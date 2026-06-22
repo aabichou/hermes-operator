@@ -139,6 +139,7 @@ func (r *HermesInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		{"StatefulSet", "StatefulSetReady", r.reconcileStatefulSet},
 		{"Honcho", "ProfileStoreReady", r.reconcileHoncho},
 		{"Tailscale", hermesv1.ConditionTailscaleReady, r.reconcileTailscale},
+		{"Semaphore", hermesv1.ConditionSemaphoreReady, r.reconcileSemaphore},
 	}
 	for _, s := range steps {
 		if err := s.fn(ctx, inst); err != nil {
@@ -659,6 +660,14 @@ func (r *HermesInstanceReconciler) reconcileHoncho(ctx context.Context, inst *he
 // Pod-level tailscaled health is observed via StatefulSet readiness, which
 // already gates the Ready condition.
 func (r *HermesInstanceReconciler) reconcileTailscale(_ context.Context, _ *hermesv1.HermesInstance) error {
+	return nil
+}
+
+// reconcileSemaphore is a no-op resource step: the SEMAPHORE_URL and
+// SEMAPHORE_TOKEN env vars are injected by the StatefulSet builder,
+// reconciled earlier. This step exists so the SemaphoreReady condition
+// appears alongside the other per-subsystem conditions.
+func (r *HermesInstanceReconciler) reconcileSemaphore(_ context.Context, _ *hermesv1.HermesInstance) error {
 	return nil
 }
 

@@ -175,6 +175,11 @@ type HermesInstanceSpec struct {
 	// Tailscale exposes the gateway over a Tailscale tailnet.
 	// +optional
 	Tailscale TailscaleSpec `json:"tailscale,omitempty"`
+
+	// Semaphore connects the agent to a Semaphore UI instance for Ansible,
+	// Terraform/OpenTofu, and script execution with full logging and audit.
+	// +optional
+	Semaphore SemaphoreSpec `json:"semaphore,omitempty"`
 }
 
 // ImageSpec selects an OCI image.
@@ -1133,6 +1138,10 @@ const (
 	// sidecar wiring is up to date.
 	ConditionTailscaleReady = "TailscaleReady"
 
+	// ConditionSemaphoreReady reports whether the Semaphore integration
+	// (env vars + skill) is up to date.
+	ConditionSemaphoreReady = "SemaphoreReady"
+
 	FinalizerBackupOnDelete    = "hermes.agent/backup-on-delete"
 	AnnotationAutoUpdateTarget = "hermes.agent/autoupdate-target"
 	AnnotationSkipFinalBackup  = "hermes.agent/skip-final-backup"
@@ -1456,6 +1465,27 @@ type TailscaleImageSpec struct {
 	// +kubebuilder:validation:Enum=Always;IfNotPresent;Never
 	// +optional
 	PullPolicy string `json:"pullPolicy,omitempty"`
+}
+
+// SemaphoreSpec connects a Hermes agent to a Semaphore UI instance for
+// Ansible, Terraform/OpenTofu, and script execution. When enabled, the
+// operator injects SEMAPHORE_URL and SEMAPHORE_TOKEN env vars and installs
+// the semaphore-ui skill so agents can dispatch tasks via the Semaphore API.
+type SemaphoreSpec struct {
+	// Enabled turns on Semaphore integration (env vars + skill).
+	// +kubebuilder:default=false
+	// +optional
+	Enabled *bool `json:"enabled,omitempty"`
+
+	// URL is the base URL of the Semaphore instance (e.g. https://semaphore.semaphore:80).
+	// Required when Enabled is true.
+	// +optional
+	URL string `json:"url,omitempty"`
+
+	// TokenSecretRef points at the Secret key holding the Semaphore API token.
+	// The token is injected as SEMAPHORE_TOKEN. Required when Enabled is true.
+	// +optional
+	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
 }
 
 func init() {

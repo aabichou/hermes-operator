@@ -3,7 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.21.0
+    controller-gen.kubebuilder.io/version: v0.17.3
   name: hermesinstances.hermes.agent
 spec:
   group: hermes.agent
@@ -7428,6 +7428,48 @@ spec:
                       type: string
                     type: array
                     x-kubernetes-list-type: set
+                type: object
+              semaphore:
+                description: |-
+                  Semaphore connects the agent to a Semaphore UI instance for Ansible,
+                  Terraform/OpenTofu, and script execution with full logging and audit.
+                properties:
+                  enabled:
+                    default: false
+                    description: Enabled turns on Semaphore integration (env vars
+                      + skill).
+                    type: boolean
+                  tokenSecretRef:
+                    description: |-
+                      TokenSecretRef points at the Secret key holding the Semaphore API token.
+                      The token is injected as SEMAPHORE_TOKEN. Required when Enabled is true.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  url:
+                    description: |-
+                      URL is the base URL of the Semaphore instance (e.g. https://semaphore.semaphore:80).
+                      Required when Enabled is true.
+                    type: string
                 type: object
               shareProcessNamespace:
                 default: true
