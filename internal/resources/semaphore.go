@@ -47,3 +47,9 @@ func BuildSemaphoreSkill(inst *hermesv1.HermesInstance) *hermesv1.InstanceSkill 
 		Source: "semaphore-ui",
 	}
 }
+
+// SemaphoreCleanupOnDelete reports whether the operator should clean up
+// the Semaphore project and user when the HermesInstance is deleted.
+func SemaphoreCleanupOnDelete(inst *hermesv1.HermesInstance) bool {
+	return semaphoreEnabled(inst) && BoolValue(inst.Spec.Semaphore.CleanupOnDelete)
+}

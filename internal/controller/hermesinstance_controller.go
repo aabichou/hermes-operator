@@ -18,7 +18,10 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"strings"
 	"time"
 
 	hermesv1 "github.com/paperclipinc/hermes-operator/api/v1"
@@ -107,12 +110,35 @@ func (r *HermesInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 				return res, nil
 			}
 		}
+		// Semaphore cleanup: delete project + user if cleanupOnDelete is set.
+		if resources.SemaphoreCleanupOnDelete(inst) &&
+			controllerutil.ContainsFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup) {
+			if err := r.semaphoreCleanup(ctx, inst); err != nil {
+				logger.Error(err, "semaphore cleanup failed")
+			}
+			controllerutil.RemoveFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup)
+			if err := r.Update(ctx, inst); err != nil {
+				return ctrl.Result{}, err
+			}
+			// Return so the next reconcile sees the finalizer removed and lets
+			// Kubernetes garbage-collect the CR.
+			return ctrl.Result{}, nil
+		}
 		return ctrl.Result{}, nil
 	}
 
 	// Add the backup-on-delete finalizer when spec.backup.onDelete=true (uses r.Patch: lesson #437).
 	if r.Backup != nil {
 		if err := r.Backup.EnsureFinalizer(ctx, inst); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Add the semaphore-cleanup finalizer when cleanupOnDelete is enabled.
+	if resources.SemaphoreCleanupOnDelete(inst) &&
+		!controllerutil.ContainsFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup) {
+		controllerutil.AddFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup)
+		if err := r.Update(ctx, inst); err != nil {
 			return ctrl.Result{}, err
 		}
 	}
@@ -668,6 +694,134 @@ func (r *HermesInstanceReconciler) reconcileTailscale(_ context.Context, _ *herm
 // reconciled earlier. This step exists so the SemaphoreReady condition
 // appears alongside the other per-subsystem conditions.
 func (r *HermesInstanceReconciler) reconcileSemaphore(_ context.Context, _ *hermesv1.HermesInstance) error {
+	return nil
+}
+
+// semaphoreCleanup deletes the Semaphore project and user associated with
+// this HermesInstance. Called from the deletion path when
+// semaphore.cleanupOnDelete is true and the finalizer is present.
+func (r *HermesInstanceReconciler) semaphoreCleanup(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	logger := log.FromContext(ctx)
+	s := inst.Spec.Semaphore
+
+	// Read admin password from the referenced secret
+	var adminSecret corev1.Secret
+	if s.AdminTokenSecretRef != nil {
+		ns := inst.Namespace
+		if err := r.Get(ctx, types.NamespacedName{
+			Name: s.AdminTokenSecretRef.LocalObjectReference.Name, Namespace: ns,
+		}, &adminSecret); err != nil {
+			return fmt.Errorf("read admin token secret %s/%s: %w",
+				ns, s.AdminTokenSecretRef.LocalObjectReference.Name, err)
+		}
+	}
+	adminPassword := string(adminSecret.Data[s.AdminTokenSecretRef.Key])
+	if adminPassword == "" {
+		return fmt.Errorf("admin password empty in secret %s", s.AdminTokenSecretRef.LocalObjectReference.Name)
+	}
+
+	// Login to Semaphore as admin
+	loginBody := fmt.Sprintf(`{"auth":"admin","password":"%s"}`, adminPassword)
+	loginReq, _ := http.NewRequestWithContext(ctx, "POST", s.URL+"/api/auth/login",
+		strings.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(loginReq)
+	if err != nil {
+		return fmt.Errorf("semaphore login: %w", err)
+	}
+	resp.Body.Close()
+
+	// Extract session cookie
+	var cookie string
+	for _, c := range resp.Cookies() {
+		if c.Name == "semaphore" {
+			cookie = c.Value
+			break
+		}
+	}
+	if cookie == "" {
+		return fmt.Errorf("no semaphore session cookie in login response")
+	}
+
+	// Find project by name (matches instance name)
+	projReq, _ := http.NewRequestWithContext(ctx, "GET", s.URL+"/api/projects", nil)
+	projReq.Header.Set("Cookie", "semaphore="+cookie)
+	resp, err = http.DefaultClient.Do(projReq)
+	if err != nil {
+		return fmt.Errorf("list projects: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var projects []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
+		return fmt.Errorf("decode projects: %w", err)
+	}
+
+	var projectID int
+	for _, p := range projects {
+		if p.Name == inst.Name {
+			projectID = p.ID
+			break
+		}
+	}
+	if projectID == 0 {
+		logger.Info("semaphore cleanup: no project found", "name", inst.Name)
+		return nil // nothing to clean up
+	}
+
+	// Find the agent user
+	userReq, _ := http.NewRequestWithContext(ctx, "GET", s.URL+"/api/users", nil)
+	userReq.Header.Set("Cookie", "semaphore="+cookie)
+	resp, err = http.DefaultClient.Do(userReq)
+	if err != nil {
+		return fmt.Errorf("list users: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var users []struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return fmt.Errorf("decode users: %w", err)
+	}
+
+	agentUsername := inst.Name + "-agent"
+	var userID int
+	for _, u := range users {
+		if u.Username == agentUsername {
+			userID = u.ID
+			break
+		}
+	}
+
+	// Delete project
+	delReq, _ := http.NewRequestWithContext(ctx, "DELETE",
+		fmt.Sprintf("%s/api/project/%d", s.URL, projectID), nil)
+	delReq.Header.Set("Cookie", "semaphore="+cookie)
+	resp, err = http.DefaultClient.Do(delReq)
+	if err != nil {
+		return fmt.Errorf("delete project %d: %w", projectID, err)
+	}
+	resp.Body.Close()
+	logger.Info("semaphore cleanup: deleted project", "name", inst.Name, "id", projectID)
+
+	// Delete user if found
+	if userID > 0 && userID != 1 { // never delete admin
+		delUserReq, _ := http.NewRequestWithContext(ctx, "DELETE",
+			fmt.Sprintf("%s/api/users/%d", s.URL, userID), nil)
+		delUserReq.Header.Set("Cookie", "semaphore="+cookie)
+		resp, err = http.DefaultClient.Do(delUserReq)
+		if err != nil {
+			return fmt.Errorf("delete user %d: %w", userID, err)
+		}
+		resp.Body.Close()
+		logger.Info("semaphore cleanup: deleted user", "username", agentUsername, "id", userID)
+	}
+
 	return nil
 }
 

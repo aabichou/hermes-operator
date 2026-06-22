@@ -1142,6 +1142,11 @@ const (
 	// (env vars + skill) is up to date.
 	ConditionSemaphoreReady = "SemaphoreReady"
 
+	// FinalizerSemaphoreCleanup is added to instances with
+	// spec.semaphore.cleanupOnDelete=true so the operator can remove the
+	// Semaphore project and user before the CR is garbage-collected.
+	FinalizerSemaphoreCleanup = "hermes.agent/semaphore-cleanup"
+
 	FinalizerBackupOnDelete    = "hermes.agent/backup-on-delete"
 	AnnotationAutoUpdateTarget = "hermes.agent/autoupdate-target"
 	AnnotationSkipFinalBackup  = "hermes.agent/skip-final-backup"
@@ -1486,6 +1491,19 @@ type SemaphoreSpec struct {
 	// The token is injected as SEMAPHORE_TOKEN. Required when Enabled is true.
 	// +optional
 	TokenSecretRef *corev1.SecretKeySelector `json:"tokenSecretRef,omitempty"`
+
+	// CleanupOnDelete removes the Semaphore project and user when the
+	// HermesInstance is deleted. Requires an admin API token configured via
+	// AdminTokenSecretRef. Default false.
+	// +kubebuilder:default=false
+	// +optional
+	CleanupOnDelete *bool `json:"cleanupOnDelete,omitempty"`
+
+	// AdminTokenSecretRef points at a Secret in the semaphore namespace
+	// holding the admin password (key: admin-password) used to delete the
+	// project and user on cleanup. Required when CleanupOnDelete is true.
+	// +optional
+	AdminTokenSecretRef *corev1.SecretKeySelector `json:"adminTokenSecretRef,omitempty"`
 }
 
 func init() {

@@ -7434,6 +7434,40 @@ spec:
                   Semaphore connects the agent to a Semaphore UI instance for Ansible,
                   Terraform/OpenTofu, and script execution with full logging and audit.
                 properties:
+                  adminTokenSecretRef:
+                    description: |-
+                      AdminTokenSecretRef points at a Secret in the semaphore namespace
+                      holding the admin password (key: admin-password) used to delete the
+                      project and user on cleanup. Required when CleanupOnDelete is true.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  cleanupOnDelete:
+                    default: false
+                    description: |-
+                      CleanupOnDelete removes the Semaphore project and user when the
+                      HermesInstance is deleted. Requires an admin API token configured via
+                      AdminTokenSecretRef. Default false.
+                    type: boolean
                   enabled:
                     default: false
                     description: Enabled turns on Semaphore integration (env vars
