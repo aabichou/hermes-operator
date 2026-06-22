@@ -114,15 +114,14 @@ func (r *HermesInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		if resources.SemaphoreCleanupOnDelete(inst) &&
 			controllerutil.ContainsFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup) {
 			if err := r.semaphoreCleanup(ctx, inst); err != nil {
-				logger.Error(err, "semaphore cleanup failed")
+				logger.Error(err, "semaphore cleanup failed, will retry")
+				return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 			}
 			original := inst.DeepCopy()
 			controllerutil.RemoveFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup)
 			if err := r.Patch(ctx, inst, client.MergeFrom(original)); err != nil {
 				return ctrl.Result{}, fmt.Errorf("patch semaphore finalizer remove: %w", err)
 			}
-			// Return so the next reconcile sees the finalizer removed and lets
-			// Kubernetes garbage-collect the CR.
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, nil
