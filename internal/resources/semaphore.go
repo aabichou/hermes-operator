@@ -6,8 +6,8 @@ import (
 	hermesv1 "github.com/paperclipinc/hermes-operator/api/v1"
 )
 
-// semaphoreEnabled reports whether the user opted into Semaphore integration.
-func semaphoreEnabled(inst *hermesv1.HermesInstance) bool {
+// SemaphoreEnabled reports whether the user opted into Semaphore integration.
+func SemaphoreEnabled(inst *hermesv1.HermesInstance) bool {
 	return BoolValue(inst.Spec.Semaphore.Enabled)
 }
 
@@ -15,7 +15,7 @@ func semaphoreEnabled(inst *hermesv1.HermesInstance) bool {
 // when Semaphore integration is enabled. It also returns the semaphore-ui
 // skill entry for auto-installation.
 func BuildSemaphoreEnv(inst *hermesv1.HermesInstance) []corev1.EnvVar {
-	if !semaphoreEnabled(inst) {
+	if !SemaphoreEnabled(inst) {
 		return nil
 	}
 	s := inst.Spec.Semaphore
@@ -40,7 +40,7 @@ func BuildSemaphoreEnv(inst *hermesv1.HermesInstance) []corev1.EnvVar {
 // BuildSemaphoreSkill returns the semaphore-ui skill entry for the
 // HermesInstance Skills list when Semaphore integration is enabled.
 func BuildSemaphoreSkill(inst *hermesv1.HermesInstance) *hermesv1.InstanceSkill {
-	if !semaphoreEnabled(inst) {
+	if !SemaphoreEnabled(inst) {
 		return nil
 	}
 	return &hermesv1.InstanceSkill{
@@ -51,5 +51,5 @@ func BuildSemaphoreSkill(inst *hermesv1.HermesInstance) *hermesv1.InstanceSkill 
 // SemaphoreCleanupOnDelete reports whether the operator should clean up
 // the Semaphore project and user when the HermesInstance is deleted.
 func SemaphoreCleanupOnDelete(inst *hermesv1.HermesInstance) bool {
-	return semaphoreEnabled(inst) && BoolValue(inst.Spec.Semaphore.CleanupOnDelete)
+	return SemaphoreEnabled(inst) && BoolValue(inst.Spec.Semaphore.CleanupOnDelete)
 }

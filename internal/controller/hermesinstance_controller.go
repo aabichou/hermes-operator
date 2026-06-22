@@ -692,11 +692,223 @@ func (r *HermesInstanceReconciler) reconcileTailscale(_ context.Context, _ *herm
 	return nil
 }
 
-// reconcileSemaphore is a no-op resource step: the SEMAPHORE_URL and
-// SEMAPHORE_TOKEN env vars are injected by the StatefulSet builder,
-// reconciled earlier. This step exists so the SemaphoreReady condition
-// appears alongside the other per-subsystem conditions.
-func (r *HermesInstanceReconciler) reconcileSemaphore(_ context.Context, _ *hermesv1.HermesInstance) error {
+// reconcileSemaphore provisions the Semaphore user, project, and API token
+// when spec.semaphore.enabled is true. It also ensures the token secret is
+// populated so the StatefulSet builder injects SEMAPHORE_TOKEN.
+func (r *HermesInstanceReconciler) reconcileSemaphore(ctx context.Context, inst *hermesv1.HermesInstance) error {
+	if !resources.SemaphoreEnabled(inst) {
+		return nil
+	}
+	s := inst.Spec.Semaphore
+	if s.AdminTokenSecretRef == nil || s.TokenSecretRef == nil {
+		return fmt.Errorf("semaphore enabled but adminTokenSecretRef or tokenSecretRef not set")
+	}
+
+	// Read admin password from semaphore namespace
+	var adminSecret corev1.Secret
+	if err := r.Get(ctx, types.NamespacedName{
+		Name: s.AdminTokenSecretRef.LocalObjectReference.Name, Namespace: "semaphore",
+	}, &adminSecret); err != nil {
+		return fmt.Errorf("read admin secret: %w", err)
+	}
+	adminPassword := strings.TrimSpace(string(adminSecret.Data[s.AdminTokenSecretRef.Key]))
+	if adminPassword == "" {
+		return fmt.Errorf("admin password empty in secret %s", s.AdminTokenSecretRef.LocalObjectReference.Name)
+	}
+
+	// Login to Semaphore
+	loginBody := fmt.Sprintf(`{"auth":"admin","password":"%s"}`, adminPassword)
+	loginReq, _ := http.NewRequestWithContext(ctx, "POST", s.URL+"/api/auth/login",
+		strings.NewReader(loginBody))
+	loginReq.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(loginReq)
+	if err != nil {
+		return fmt.Errorf("semaphore login: %w", err)
+	}
+	resp.Body.Close()
+	var cookie string
+	for _, c := range resp.Cookies() {
+		if c.Name == "semaphore" {
+			cookie = c.Value
+			break
+		}
+	}
+	if cookie == "" {
+		return fmt.Errorf("no semaphore session cookie")
+	}
+
+	type apiError struct{ Error string `json:"error"` }
+
+	apiGet := func(path string, target interface{}) error {
+		req, _ := http.NewRequestWithContext(ctx, "GET", s.URL+path, nil)
+		req.Header.Set("Cookie", "semaphore="+cookie)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer r.Body.Close()
+		return json.NewDecoder(r.Body).Decode(target)
+	}
+
+	apiPost := func(path, body string, target interface{}) error {
+		req, _ := http.NewRequestWithContext(ctx, "POST", s.URL+path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Cookie", "semaphore="+cookie)
+		r, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return err
+		}
+		defer r.Body.Close()
+		if r.StatusCode >= 400 {
+			var ae apiError
+			json.NewDecoder(r.Body).Decode(&ae)
+			return fmt.Errorf("POST %s: %d %s", path, r.StatusCode, ae.Error)
+		}
+		if target != nil {
+			return json.NewDecoder(r.Body).Decode(target)
+		}
+		return nil
+	}
+
+	projectName := inst.Name
+	agentUsername := inst.Name + "-agent"
+	logger := log.FromContext(ctx)
+
+	// Ensure project exists
+	var projects []struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	if err := apiGet("/api/projects", &projects); err != nil {
+		return fmt.Errorf("list projects: %w", err)
+	}
+	var projectID int
+	for _, p := range projects {
+		if p.Name == projectName {
+			projectID = p.ID
+			break
+		}
+	}
+	if projectID == 0 {
+		var created struct{ ID int `json:"id"` }
+		if err := apiPost("/api/projects",
+			fmt.Sprintf(`{"name":"%s","alert":false,"max_parallel_tasks":0}`, projectName),
+			&created); err != nil {
+			return fmt.Errorf("create project %s: %w", projectName, err)
+		}
+		projectID = created.ID
+		logger.Info("semaphore: created project", "name", projectName, "id", projectID)
+	}
+
+	// Ensure agent user exists
+	var users []struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+	}
+	if err := apiGet("/api/users", &users); err != nil {
+		return fmt.Errorf("list users: %w", err)
+	}
+	var userID int
+	for _, u := range users {
+		if u.Username == agentUsername {
+			userID = u.ID
+			break
+		}
+	}
+	if userID == 0 {
+		var created struct{ ID int `json:"id"` }
+		if err := apiPost("/api/users",
+			fmt.Sprintf(`{"name":"%s Agent","username":"%s","email":"%s@semaphore.local","password":"%s","admin":false}`,
+				inst.Name, agentUsername, agentUsername, agentUsername+"-auto"),
+			&created); err != nil {
+			return fmt.Errorf("create user %s: %w", agentUsername, err)
+		}
+		userID = created.ID
+		logger.Info("semaphore: created user", "username", agentUsername, "id", userID)
+	}
+
+	// Ensure user is in project as manager
+	var projUsers []struct {
+		ID       int    `json:"id"`
+		Username string `json:"username"`
+		Role     string `json:"role"`
+	}
+	_ = apiGet(fmt.Sprintf("/api/project/%d/users", projectID), &projUsers)
+	var inProject bool
+	for _, pu := range projUsers {
+		if pu.ID == userID {
+			inProject = true
+			break
+		}
+	}
+	if !inProject {
+		if err := apiPost(fmt.Sprintf("/api/project/%d/users", projectID),
+			fmt.Sprintf(`{"user_id":%d,"role":"manager"}`, userID), nil); err != nil {
+			return fmt.Errorf("add user %d to project %d: %w", userID, projectID, err)
+		}
+		logger.Info("semaphore: added user to project", "user", agentUsername, "project", projectName)
+	}
+
+	// Ensure token secret exists with a valid API token
+	var tokenSecret corev1.Secret
+	err = r.Get(ctx, types.NamespacedName{
+		Name: s.TokenSecretRef.LocalObjectReference.Name, Namespace: inst.Namespace,
+	}, &tokenSecret)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return fmt.Errorf("read token secret: %w", err)
+		}
+		// Secret doesn't exist — login as the user and generate a token
+		userLoginBody := fmt.Sprintf(`{"auth":"%s","password":"%s"}`, agentUsername, agentUsername+"-auto")
+		userLoginReq, _ := http.NewRequestWithContext(ctx, "POST", s.URL+"/api/auth/login",
+			strings.NewReader(userLoginBody))
+		userLoginReq.Header.Set("Content-Type", "application/json")
+		userResp, err := http.DefaultClient.Do(userLoginReq)
+		if err != nil {
+			return fmt.Errorf("user login: %w", err)
+		}
+		userResp.Body.Close()
+		var userCookie string
+		for _, c := range userResp.Cookies() {
+			if c.Name == "semaphore" {
+				userCookie = c.Value
+				break
+			}
+		}
+		if userCookie == "" {
+			return fmt.Errorf("no session cookie for user %s", agentUsername)
+		}
+
+		// Generate API token
+		tokenReq, _ := http.NewRequestWithContext(ctx, "POST", s.URL+"/api/user/tokens", strings.NewReader("{}"))
+		tokenReq.Header.Set("Content-Type", "application/json")
+		tokenReq.Header.Set("Cookie", "semaphore="+userCookie)
+		tokenResp, err := http.DefaultClient.Do(tokenReq)
+		if err != nil {
+			return fmt.Errorf("generate token: %w", err)
+		}
+		defer tokenResp.Body.Close()
+		var tok struct{ ID string `json:"id"` }
+		if err := json.NewDecoder(tokenResp.Body).Decode(&tok); err != nil {
+			return fmt.Errorf("decode token: %w", err)
+		}
+
+		// Create the K8s secret
+		secret := &corev1.Secret{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      s.TokenSecretRef.LocalObjectReference.Name,
+				Namespace: inst.Namespace,
+			},
+			StringData: map[string]string{
+				s.TokenSecretRef.Key: tok.ID,
+			},
+		}
+		if err := r.Create(ctx, secret); err != nil {
+			return fmt.Errorf("create token secret: %w", err)
+		}
+		logger.Info("semaphore: created token secret", "secret", s.TokenSecretRef.LocalObjectReference.Name)
+	}
+
 	return nil
 }
 
