@@ -704,15 +704,16 @@ func (r *HermesInstanceReconciler) semaphoreCleanup(ctx context.Context, inst *h
 	logger := log.FromContext(ctx)
 	s := inst.Spec.Semaphore
 
-	// Read admin password from the referenced secret
+	// Read admin password from the referenced secret (always in semaphore ns)
 	var adminSecret corev1.Secret
 	if s.AdminTokenSecretRef != nil {
-		ns := inst.Namespace
+		secretNS := "semaphore"
+		secretName := s.AdminTokenSecretRef.LocalObjectReference.Name
 		if err := r.Get(ctx, types.NamespacedName{
-			Name: s.AdminTokenSecretRef.LocalObjectReference.Name, Namespace: ns,
+			Name: secretName, Namespace: secretNS,
 		}, &adminSecret); err != nil {
 			return fmt.Errorf("read admin token secret %s/%s: %w",
-				ns, s.AdminTokenSecretRef.LocalObjectReference.Name, err)
+				secretNS, secretName, err)
 		}
 	}
 	adminPassword := string(adminSecret.Data[s.AdminTokenSecretRef.Key])
