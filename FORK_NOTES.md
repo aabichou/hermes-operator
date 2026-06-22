@@ -5,11 +5,39 @@ image that actually serves the `hermes dashboard` UI when installed
 from a git ref. Consumed by the `homelab-k3s` repo (`tunis` cluster,
 `agents/hermes` instance).
 
-The operator code itself is unchanged from upstream
+The operator code is **mostly** unchanged from upstream
 `paperclipinc/hermes-operator`. Only the `images/hermes-agent/` build
-context differs.
+context and the `spec.semaphore` CRD integration (see Divergence below)
+differ.
 
 ## Divergence from upstream
+
+### `spec.semaphore` — Semaphore UI integration (operator code change)
+
+Added a first-class `spec.semaphore` section to the HermesInstance CRD that auto-injects
+`SEMAPHORE_URL` and `SEMAPHORE_TOKEN` env vars into agent containers and exposes a
+`SemaphoreReady` status condition. Follows the same pattern as `spec.tailscale` and
+`spec.profileStore`.
+
+Files changed:
+- `api/v1/hermesinstance_types.go` — `SemaphoreSpec` type + `ConditionSemaphoreReady`
+- `internal/resources/semaphore.go` — `BuildSemaphoreEnv()` builder
+- `internal/resources/statefulset.go` — wiring into agent container env
+- `internal/controller/hermesinstance_controller.go` — `reconcileSemaphore` step
+- `.github/workflows/operator-image.yaml` — CI to build + push operator image to GHCR
+
+Usage:
+```yaml
+spec:
+  semaphore:
+    enabled: true
+    url: http://semaphore.semaphore:80
+    tokenSecretRef:
+      name: semaphore-credentials
+      key: api-token
+  skills:
+    - source: semaphore-ui
+```
 
 ### `images/hermes-agent/pyproject.toml`
 
