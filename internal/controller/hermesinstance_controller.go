@@ -909,6 +909,23 @@ func (r *HermesInstanceReconciler) reconcileSemaphore(ctx context.Context, inst 
 		logger.Info("semaphore: created token secret", "secret", s.TokenSecretRef.LocalObjectReference.Name)
 	}
 
+	// Ensure the semaphore-ui skill is in spec.skills
+	hasSkill := false
+	for _, sk := range inst.Spec.Skills {
+		if sk.Source == "semaphore-ui" {
+			hasSkill = true
+			break
+		}
+	}
+	if !hasSkill {
+		original := inst.DeepCopy()
+		inst.Spec.Skills = append(inst.Spec.Skills, hermesv1.InstanceSkill{Source: "semaphore-ui"})
+		if err := r.Patch(ctx, inst, client.MergeFrom(original)); err != nil {
+			return fmt.Errorf("patch semaphore skill: %w", err)
+		}
+		logger.Info("semaphore: added semaphore-ui skill")
+	}
+
 	return nil
 }
 
