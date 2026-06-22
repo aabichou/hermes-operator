@@ -116,9 +116,10 @@ func (r *HermesInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			if err := r.semaphoreCleanup(ctx, inst); err != nil {
 				logger.Error(err, "semaphore cleanup failed")
 			}
+			original := inst.DeepCopy()
 			controllerutil.RemoveFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup)
-			if err := r.Update(ctx, inst); err != nil {
-				return ctrl.Result{}, err
+			if err := r.Patch(ctx, inst, client.MergeFrom(original)); err != nil {
+				return ctrl.Result{}, fmt.Errorf("patch semaphore finalizer remove: %w", err)
 			}
 			// Return so the next reconcile sees the finalizer removed and lets
 			// Kubernetes garbage-collect the CR.
@@ -135,11 +136,13 @@ func (r *HermesInstanceReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 	}
 
 	// Add the semaphore-cleanup finalizer when cleanupOnDelete is enabled.
+	// Uses Patch, not Update (lesson #437: Update bumps generation).
 	if resources.SemaphoreCleanupOnDelete(inst) &&
 		!controllerutil.ContainsFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup) {
+		original := inst.DeepCopy()
 		controllerutil.AddFinalizer(inst, hermesv1.FinalizerSemaphoreCleanup)
-		if err := r.Update(ctx, inst); err != nil {
-			return ctrl.Result{}, err
+		if err := r.Patch(ctx, inst, client.MergeFrom(original)); err != nil {
+			return ctrl.Result{}, fmt.Errorf("patch semaphore finalizer add: %w", err)
 		}
 	}
 
