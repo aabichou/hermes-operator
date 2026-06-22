@@ -40,6 +40,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute tags
+        id: tags
+        run: |
+          BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
+          echo "tag=${BRANCH}" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -48,5 +54,4 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/aabichou/hermes-operator:${{ github.ref_name }}
-            ghcr.io/aabichou/hermes-operator:latest
+            ghcr.io/aabichou/hermes-operator:${{ steps.tags.outputs.tag }}
