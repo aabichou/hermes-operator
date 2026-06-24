@@ -69,11 +69,11 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # Mirror upstream's Dockerfile: clone the same fork ref pinned in
 # pyproject.toml, run the production vite build, then copy the resulting
 # web_dist/ into the runtime venv below.
-ARG HERMES_AGENT_FORK_REPO=https://github.com/aabichou/hermes-agent-src.git
-ARG HERMES_AGENT_FORK_REF=fix/packages-find-hermes-cli-subpackages
+ARG HERMES_AGENT_FORK_REPO=https://github.com/NousResearch/hermes-agent.git
+ARG HERMES_AGENT_FORK_REF=v2026.6.19
 FROM node:22-bookworm-slim AS web-builder
-ARG HERMES_AGENT_FORK_REPO=https://github.com/aabichou/hermes-agent-src.git
-ARG HERMES_AGENT_FORK_REF=fix/packages-find-hermes-cli-subpackages
+ARG HERMES_AGENT_FORK_REPO=https://github.com/NousResearch/hermes-agent.git
+ARG HERMES_AGENT_FORK_REF=v2026.6.19
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
