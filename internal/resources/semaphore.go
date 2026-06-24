@@ -98,3 +98,5 @@ def sema(method, path, body=None):
 print(sema("GET", "/api/projects"))
 ` + "```" + `
 `
+
+// (re-base verified against upstream v0.1.19 — see FORK_NOTES)
