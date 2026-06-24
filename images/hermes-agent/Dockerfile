@@ -66,19 +66,21 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # is empty in site-packages and `hermes dashboard` serves
 # `{"error":"Frontend not built"}` on every route.
 #
-# Mirror upstream's Dockerfile: clone the same fork ref pinned in
+# Mirror upstream's Dockerfile: clone the same upstream ref pinned in
 # pyproject.toml, run the production vite build, then copy the resulting
-# web_dist/ into the runtime venv below.
-ARG HERMES_AGENT_FORK_REPO=https://github.com/NousResearch/hermes-agent.git
-ARG HERMES_AGENT_FORK_REF=v2026.6.19
+# web_dist/ into the runtime venv below. (Kept named *_SRC_* — the
+# hermes-agent-src fork was retired once upstream 0.17.0 shipped the
+# packages.find fix; this now tracks NousResearch directly.)
+ARG HERMES_AGENT_SRC_REPO=https://github.com/NousResearch/hermes-agent.git
+ARG HERMES_AGENT_SRC_REF=v2026.6.19
 FROM node:22-bookworm-slim AS web-builder
-ARG HERMES_AGENT_FORK_REPO=https://github.com/NousResearch/hermes-agent.git
-ARG HERMES_AGENT_FORK_REF=v2026.6.19
+ARG HERMES_AGENT_SRC_REPO=https://github.com/NousResearch/hermes-agent.git
+ARG HERMES_AGENT_SRC_REF=v2026.6.19
 RUN apt-get update \
     && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
-RUN git clone --depth 1 --branch "${HERMES_AGENT_FORK_REF}" "${HERMES_AGENT_FORK_REPO}" hermes-agent
+RUN git clone --depth 1 --branch "${HERMES_AGENT_SRC_REF}" "${HERMES_AGENT_SRC_REPO}" hermes-agent
 WORKDIR /src/hermes-agent/web
 RUN npm ci --no-audit --no-fund
 RUN npm run build
@@ -135,8 +137,8 @@ COPY --from=builder --chown=hermes:hermes /opt/venv /opt/venv
 # the wheel build); without these assets `hermes dashboard` returns
 # {"error":"Frontend not built"} on every page. The web-builder stage
 # above produces /src/hermes-agent/hermes_cli/web_dist/ from the same
-# fork ref that uv resolves, so the assets are commit-aligned with the
-# Python package.
+# upstream ref that uv resolves, so the assets are commit-aligned with
+# the Python package.
 COPY --from=web-builder --chown=hermes:hermes \
     /src/hermes-agent/hermes_cli/web_dist \
     /opt/venv/lib/python${PYTHON_VERSION}/site-packages/hermes_cli/web_dist

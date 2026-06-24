@@ -39,7 +39,18 @@ spec:
     - source: semaphore-ui
 ```
 
-### `images/hermes-agent/pyproject.toml`
+> **RETIRED as of hermes-agent 0.17.0 (v2026.6.19).** The
+> `aabichou/hermes-agent-src` fork existed solely for the
+> `[tool.setuptools.packages.find]` patch below — and upstream 0.17.0
+> now ships `hermes_cli.*` + `acp_adapter` in that `include` list
+> natively. The image build pins `NousResearch/hermes-agent@<tag>`
+> directly (see the live `images/hermes-agent/pyproject.toml` +
+> `Dockerfile`), and the agent-src repo is archived. The `web-builder`
+> stage stays (web_dist still needs an `npm run build`), now cloning the
+> upstream tag via the `HERMES_AGENT_SRC_REPO`/`HERMES_AGENT_SRC_REF`
+> args. The diffs below are kept as history of why the fork once existed.
+
+### `images/hermes-agent/pyproject.toml` (historical)
 
 ```diff
  dependencies = [
