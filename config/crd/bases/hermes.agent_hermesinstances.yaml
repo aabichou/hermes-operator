@@ -5602,8 +5602,10 @@ spec:
                 description: |-
                   Runtime configured the agent's Python toolchain and OS-level dependencies
                   for the old hand-rolled agent image. It is now IGNORED: the published agent
-                  image is the upstream NousResearch/hermes-agent s6 runtime, which is
-                  self-contained (see docs/runtime.md). Setting this has no effect.
+                  image is the upstream NousResearch/hermes-agent s6 runtime, which ships its
+                  own Python env, browser, node, and dependencies (see docs/runtime.md), so
+                  the operator no longer builds a runtime via init containers. Setting this
+                  has no effect.
 
                   Deprecated: ignored since the upstream-image runtime (v0.1.19); scheduled
                   for removal no earlier than v0.3.0 and 2027-01-01. See docs/deprecations.md.
@@ -7433,20 +7435,94 @@ spec:
                     type: array
                     x-kubernetes-list-type: set
                 type: object
+              semaphore:
+                description: |-
+                  Semaphore connects the agent to a Semaphore UI instance for Ansible,
+                  Terraform/OpenTofu, and script execution with full logging and audit.
+                properties:
+                  adminTokenSecretRef:
+                    description: |-
+                      AdminTokenSecretRef points at a Secret in the semaphore namespace
+                      holding the admin password (key: admin-password) used to provision and
+                      to delete the project and user. Required when Enabled is true.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  cleanupOnDelete:
+                    default: false
+                    description: |-
+                      CleanupOnDelete removes the Semaphore project and user when the
+                      HermesInstance is deleted. Requires AdminTokenSecretRef. Default false.
+                    type: boolean
+                  enabled:
+                    default: false
+                    description: Enabled turns on Semaphore integration (env vars
+                      + skill).
+                    type: boolean
+                  tokenSecretRef:
+                    description: |-
+                      TokenSecretRef points at the Secret key holding the Semaphore API token.
+                      The token is injected as SEMAPHORE_TOKEN. Required when Enabled is true.
+                    properties:
+                      key:
+                        description: The key of the secret to select from.  Must be
+                          a valid secret key.
+                        type: string
+                      name:
+                        default: ""
+                        description: |-
+                          Name of the referent.
+                          This field is effectively required, but due to backwards compatibility is
+                          allowed to be empty. Instances of this type with an empty value here are
+                          almost certainly wrong.
+                          More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#names
+                        type: string
+                      optional:
+                        description: Specify whether the Secret or its key must be
+                          defined
+                        type: boolean
+                    required:
+                    - key
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  url:
+                    description: |-
+                      URL is the base URL of the Semaphore instance (e.g. http://semaphore.semaphore:80).
+                      Required when Enabled is true.
+                    type: string
+                type: object
               shareProcessNamespace:
                 default: false
                 description: |-
                   ShareProcessNamespace enables PID namespace sharing between all containers
-                  in the pod. When true (the default), the infrastructure (pause) container
-                  becomes PID 1 and reaps zombie processes, preventing accumulation of defunct
-                  helper processes (git, plugins, shells) spawned under the agent entrypoint
-                  when it does not call waitpid().
+                  in the pod. Defaults to false: the upstream hermes-agent image runs under
+                  s6-overlay, whose /init must be PID 1 (s6-overlay-suexec aborts otherwise),
+                  and s6 already reaps zombies non-blocking on SIGCHLD — so sharing the process
+                  namespace (which makes the pause container PID 1) is both incompatible and
+                  unnecessary.
 
                   Security note: enabling this lets every container in the pod see and signal
                   every other container's processes. A compromised sidecar could send signals
-                  to the agent and vice versa. Set to false to keep per-container PID isolation;
-                  you are then responsible for reaping zombies (e.g. by baking tini or dumb-init
-                  into the image).
+                  to the agent and vice versa. Leave false to keep per-container PID isolation.
                 type: boolean
               sidecars:
                 description: |-

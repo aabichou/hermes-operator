@@ -1,17 +1,25 @@
-name: agent-image
+# .github/workflows/operator-image.yaml
+#
+# Builds and pushes the hermes-operator image to ghcr.io.
+name: operator-image
 
 on:
-  workflow_dispatch:
-    inputs:
-      hermes_version:
-        description: "Upstream hermes-agent release tag (e.g. v2026.5.29.2)"
-        required: true
-        type: string
+  push:
+    branches:
+      - main
+      - feat/*
+    paths:
+      - 'api/**'
+      - 'internal/**'
+      - 'cmd/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'Dockerfile'
+      - '.github/workflows/operator-image.yaml'
 
 permissions:
   contents: read
   packages: write
-  id-token: write
 
 jobs:
   build:
@@ -32,15 +40,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Compute tags
+        id: tags
+        run: |
+          BRANCH=$(echo "${{ github.ref_name }}" | tr '/' '-')
+          echo "tag=${BRANCH}" >> $GITHUB_OUTPUT
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: images/hermes-agent
-          file: images/hermes-agent/Dockerfile
+          context: .
+          file: Dockerfile
           platforms: linux/amd64
           push: true
           tags: |
-            ghcr.io/aabichou/hermes-agent:${{ inputs.hermes_version }}
-            ghcr.io/aabichou/hermes-agent:latest
-          build-args: |
-            HERMES_VERSION=${{ inputs.hermes_version }}
+            ghcr.io/aabichou/hermes-operator:${{ steps.tags.outputs.tag }}

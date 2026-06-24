@@ -38,7 +38,12 @@ func DecodeWorkspacePath(key string) string {
 func BuildWorkspaceConfigMap(inst *hermesv1.HermesInstance) *corev1.ConfigMap {
 	data := map[string]string{}
 	for _, f := range inst.Spec.Workspace.InitialFiles {
-		data[EncodeWorkspacePath(f.Path)] = f.Content
+		content := f.Content
+		if f.Path == "SOUL.md" && SemaphoreEnabled(inst) {
+			// Prepend the Semaphore usage block so the model sees it early.
+			content = SemaphoreSoulBlock + "\n" + content
+		}
+		data[EncodeWorkspacePath(f.Path)] = content
 	}
 	if len(inst.Spec.Workspace.InitialDirs) > 0 {
 		dirs := make([]string, len(inst.Spec.Workspace.InitialDirs))
